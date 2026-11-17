@@ -5,6 +5,10 @@ Reference: [BuildYourOwnEventStore](https://github.com/oskardudycz/EventSourcing
 
 Target: a TypeScript npm package for SpacetimeDB 2.15.x (CLI verified locally: `spacetimedb-cli 2.15.0`).
 
+> Implementation note: this plan was written under the working name `spacetime-event-store`; the
+> package shipped as **`stdb-es`**, with entry points `.`, `./server`, `./client`, and `./testing`.
+> The architecture below is what was built; earlier path examples keep the working name.
+
 > Spacetime is the whole backend: the module *is* the application server, reducers are the write
 > path, and views are the client read path. The package therefore ships **table definitions, pure
 > helper functions, adapter protocols, view factories and contract tests**. The application owns
