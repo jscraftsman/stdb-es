@@ -6,8 +6,8 @@ Reference: [BuildYourOwnEventStore](https://github.com/oskardudycz/EventSourcing
 Target: a TypeScript npm package for SpacetimeDB 2.15.x (CLI verified locally: `spacetimedb-cli 2.15.0`).
 
 > Implementation note: this plan was written under the working name `spacetime-event-store`; the
-> package shipped as **`stdb-es`**, with entry points `.`, `./server`, `./client`, and `./testing`.
-> The architecture below is what was built; earlier path examples keep the working name.
+> package shipped as **`stdb-es`**, with entry points `.`, `./server`, `./client`, and `./testing`
+> (plus the planned `./testing/integration`). The architecture below is what was built.
 
 > Spacetime is the whole backend: the module *is* the application server, reducers are the write
 > path, and views are the client read path. The package therefore ships **table definitions, pure
@@ -40,9 +40,14 @@ change the design, so they are recorded here rather than quietly edited.
   concurrency, stream reads, aggregation, time travel, aggregates + repository, snapshots, projections.
 - Private tables for all core data. No public table ever holds events, stream state or snapshots.
 - Read models are app-owned views (default) or app-owned materialized tables (escape hatch).
-- Strong typing end to end, with two payload modes: JSON (default) and typed enum (opt-in).
+- Strong typing end to end, with canonical JSON payloads as the shipped default and a typed-enum
+  mode as the schema-evolution target (spiked, not yet shipped).
 - Enforceable in practice: compile-time adapters + contract tests + a drift-detecting doctor +
   a publish-time smoke test.
+- Testable at two levels by consumers: fast in-memory unit tests with fakes and the module harness,
+  and opt-in integration tests against a disposable real database.
+- Documented by a **Package Usage Guide** (module, client, testing, frontend) and a complete
+  **API reference**, both written for app developers.
 - Publishable to npm, testable with the official module test harness.
 
 **Non-goals (v1)**
@@ -52,6 +57,20 @@ change the design, so they are recorded here rather than quietly edited.
   this stays available without being required.
 - Event schema registry server / cross-database distribution.
 - Rust/C#/C++ modules. TS-first; the data model is language-neutral.
+- A hosted test service. The integration kit manages a disposable database, not infrastructure.
+
+### 1.1 Delivery requirements (v1)
+
+| ID | Requirement | Acceptance criteria |
+| --- | --- | --- |
+| **R1** | **Core package unit tests** | Every public export in `.`, `./server`, and `./client` has direct coverage; all ten workshop modules have a named test; the contract suite is dogfooded against the counter fixture; `npm test` is green with no live server. |
+| **R2** | **Consumer unit-test tools** | `stdb-es/testing` gives a consumer everything needed to test *their* module and client without a server: harness wrapper, wire fixtures, deterministic event ids, append-error assertions, contract suite, and a fake `append` for client-side tests. No network, no Node built-ins, runner-agnostic except for the optional `vitest` peer used by the contract suite. |
+| **R3** | **Consumer integration-test tools** | A Node-only entry, `stdb-es/testing/integration`, that publishes a module to a disposable database, calls reducers, runs owner and anonymous SQL, connects clients, waits for subscription convergence, and tears down. Works against `spacetime start` locally and a remote server, with no hard dependency on `vitest`. |
+| **R4** | **Package Usage Guide** | `docs/usage-guide.md` with four parts — module, client, testing, frontend. It explains domain-separated module/client layouts, retries, time travel, cache recovery, authorization, and all three consumer test layers. |
+| **R5** | **CI gate for the above** | CI runs library and example typechecks, the offline unit suite, a disposable-server publish smoke test, and — once R3 lands — the consumer integration suite. A failure in any layer blocks merge. |
+| **R6** | **API reference** | `docs/API.md` documents every export from `.`, `./server`, `./client`, and `./testing` with its purpose, inputs/payload, and output/guarantees. Planned APIs are listed separately and never presented as shipped. |
+| **R7** | **README glossary** | `README.md` defines the consumer-facing terms used by the API and guides: stream, event envelope, version, expected version, position, state cache, version guard, projection, view, upcast, domain, cross-aggregate, and the other terms used by the consumer API. |
+| **R8** | **Example sets** | Each planned set contains a publishable module plus a simple React client with a basic UI. The sets cover idempotency, eventual consistency, cross-aggregate coordination, multiple domains, and schema evolution with minimal concept overlap. Implementation waits for an explicit go signal. |
 
 ---
 
@@ -61,7 +80,7 @@ change the design, so they are recorded here rather than quietly edited.
 | --- | --- |
 | `append_event(...)` SQL function | `appendToStream()` helper called from an app-owned reducer |
 | `SELECT ... FOR UPDATE` | Not needed: transactions are serializable and serialized per database |
-| `events.data JSONB`, `type text` | `data t.string()` (canonical JSON) + `eventType t.string()`; typed enum mode swaps the column type |
+| `events.data JSONB`, `type text` | `data t.string()` (canonical JSON) + `eventType t.string()`; typed-enum mode is spiked but not shipped |
 | `UNIQUE(stream_id, version)` | No composite unique constraint exists; enforced in the reducer. `eventId` is the PK for dedupe |
 | `Guid.CreateVersion7()` | Caller-supplied event ids (this is what makes retries idempotent) |
 | `Task` / `async` | Reducers are synchronous |
@@ -112,10 +131,11 @@ Consequences:
 
 ### Payload decision
 
-Both modes ship; the choice is made at schema construction and cannot change later without a manual
-migration, so it is a documented, deliberate decision.
+Only the JSON mode ships in v1. The typed-enum column below was verified in the spike and is the
+evolution target, but no factory is exported for it yet. Payload mode is fixed at schema construction;
+switching later requires a manual migration, so the choice is deliberate.
 
-| | `data: t.string()` (default) | `data: AppEventEnum` (opt-in) |
+| | `data: t.string()` (shipped) | `data: AppEventEnum` (spiked, not shipped) |
 | --- | --- | --- |
 | New event type | app code only | automatic schema change |
 | Payload field added | app code (upcaster) | manual migration → `V2` variant + upcaster |
@@ -126,16 +146,16 @@ migration, so it is a documented, deliberate decision.
 | Column size | variable string | derived from the union |
 
 Default JSON because the package is generic and because payload evolution must never require a
-database migration. Typed enum is offered because it is genuinely nicer for a single-context app
-and the spike proves the additive case is safe.
+database migration. A typed-enum option remains attractive for a single-context app because the spike
+shows the additive case is safe; it is not part of the v1 API.
 
 ---
 
 ## 4. Package layout
 
 ```
-packages/spacetime-event-store/
-  package.json            # type: module; exports ".", "./server", "./client", "./testing"
+stdb-es/
+  package.json            # exports ".", "./server", "./client", "./testing", "./testing/integration"
   src/
     server/
       tables.ts           # es_stream, es_event, es_head (+ optional typed payload factory)
@@ -150,34 +170,55 @@ packages/spacetime-event-store/
       index.ts
     client/
       encode.ts           # registry, encode/decode, upcasters
-      event-store.ts      # append + subscribe helpers
+      event-store.ts      # encode/append/retry + decoded-row helpers
+      views.ts            # subscription query literals
       index.ts
     testing/
-      contracts.ts        # runEventStoreContractTests
-      fixtures.ts
+      harness.ts          # withIndexRanges workaround
+      fixtures.ts         # wire rows, deterministic ids, assertions
+      contracts.ts        # runEventStoreContractTests (optional vitest peer)
+      fake-append.ts      # planned: records appends for client unit tests
+      integration/        # planned: Node-only publish/call/sql/subscribe harness
       index.ts
-examples/
-  counter/                # publishable module used by integration tests
-  counter-client/
-docs/
+  examples/
+    counter/              # publishable module; target of the live smoke test
+    sets/                 # planned example sets (R8): each has spacetimedb/ + web/
+      idempotent-order/
+      eventual-delivery/
+      cross-aggregate-transfer/
+      multi-domain-storefront/
+      schema-evolution/
+  docs/
+    usage-guide.md        # module, client, testing, frontend (R4)
+    API.md                # complete consumer API reference (R6)
+    sql-recipes.md        # owner-only inspection and repair
+    event-sourcing-plan.md
+  scripts/
+    smoke-example.mjs     # live publish smoke test
 ```
 
 ```json
 {
-  "name": "@acme/spacetime-event-store",
+  "name": "stdb-es",
   "type": "module",
   "exports": {
     ".": "./dist/index.js",
     "./server": "./dist/server/index.js",
     "./client": "./dist/client/index.js",
-    "./testing": "./dist/testing/index.js"
+    "./testing": "./dist/testing/index.js",
+    "./testing/integration": "./dist/testing/integration/index.js"
   },
-  "peerDependencies": { "spacetimedb": ">=2.15.0 <3" }
+  "peerDependencies": { "spacetimedb": ">=2.15.0 <3", "vitest": ">=3 <4" },
+  "peerDependenciesMeta": { "vitest": { "optional": true } }
 }
 ```
 
-The `server` entry must not import the client SDK or Node built-ins. A module is bundled and runs in
-the V8 isolate; the client entry is a normal npm library.
+Two hard boundaries:
+
+- The `server` entry must not import the client SDK or Node built-ins. A module is bundled and runs
+  in the V8 isolate.
+- The `client` entry must stay browser-safe. Node-only test tooling lives behind
+  `./testing/integration`, never behind `./client` or `./testing`.
 
 ---
 
@@ -708,24 +749,29 @@ The package enforces shape and behavior, not table definitions:
 1. **Compile-time adapters.** `StateCache<TState>`, `InlineProjection`, and the event registry are
    typed. A wrong column or row shape is a TypeScript error in the app.
 2. **Version guard.** Stale caches are ignored, not trusted (§9.2).
-3. **Contract tests** (`@acme/spacetime-event-store/testing`) run the app's actual module through the
-   harness and fail on drift:
+3. **Contract tests** (`stdb-es/testing`) run the app's actual module through the harness and fail on
+   drift:
 
    ```ts
    runEventStoreContractTests({
-     spacetimedb, harness,
-     streams: [{ streamType: 'counter', createAggregate, decode, fold, stateCache }],
-     projections: [counterSummary],
-     readModels: [{ name: 'order_summary', query: (ctx, id) => ..., expect: ... }],
+     name: 'counter contract',
+     spacetimedb,
+     moduleExports: { appendEvents },
+     append: (ctx, args) => appendEvents(ctx, args),
+     streamId: () => 'counter-1',
+     streams: [{ streamType: 'Counter', repository, stateCache, replay, sample }],
+     projections: { projections, snapshot },
+     views: [{ name, view, params, seed, check }],
    });
    ```
 
    Covered invariants: append/concurrency/dedupe; `cache.version === stream.version` after every
-   append; cached state equals full replay; incremental projection equals rebuild-from-zero; every
-   registered view returns the expected rows for a seeded fixture; no duplicate view primary keys.
+   append; cached state equals full replay; time travel; structural integrity; same-version drift
+   detection and repair; incremental projection equals rebuild-from-zero; every registered view
+   returns the expected rows for a seeded fixture.
 4. **Doctor helpers** (pure functions, no exported reducers, per the admin decision):
-   `findDrift(ctx, streams)`, `verifyStream(ctx, id, fold, cache)`, `repairStream(ctx, id, fold, cache)`.
-   The app exposes its own gated reducer if it wants a button.
+   `findDrift(ctx, streams)`, `verifyStreamIntegrity(ctx, id)`, `verifyStreamState(ctx, id, opts)`,
+   `repairStream(ctx, id, opts)`. The app exposes its own gated reducer if it wants a button.
 5. **SQL recipes** in the docs for inspection and repair without new API surface.
 6. **Publish smoke test.** After publishing to a scratch database, query every registered view with
    `spacetime sql` and assert on the seeded fixture. This is what catches "the view compiles but
@@ -735,36 +781,36 @@ The package enforces shape and behavior, not table definitions:
 
 ## 13. Client SDK
 
+Shipped surface:
+
 ```ts
-export function createEventStoreClient<TEvent>(opts: {
-  reducers: TReducers;
-  tables: TTables;
-  registry: EventRegistry<TEvent>;       // type -> { encode, decode, upgrade? }
-  newEventId?: () => string;             // default crypto.randomUUID()
-}) {
-  return {
-    append(streamId, streamType, events: TEvent[], expectedVersion = ANY),
-    subscribeToStream(conn, streamId, handlers),
-    subscribeAtVersion(conn, streamId, version, handlers),
-    readFromCache(streamId, opts?),         // over the client's own subscribed rows
-  };
-}
+createEventRegistry({ typeOf, events });          // encode/decode/upgrade per event type
+encodeEvents(registry, events, { newEventId?, metadata? });
+decodeEvent(registry, row);
+createEventStoreClient({ append, registry, newEventId? });
+  // encode / append / retry / decode / decodeAll
+sliceRows(decodedRows, { streamId?, fromVersion?, atVersion?, atTimestampMicros?, limit? });
+viewQuery(name, args);  tableQuery(name);  sqlLiteral(value);
 ```
 
-- `append` calls the app's reducer and rejects with the server message on mismatch.
-- `eventId` dedupe makes a retry after `UnknownCallResultError` safe: the store returns the settled
-  result instead of appending twice.
+- `append` calls the app's generated reducer; `retry` re-sends the exact encoded batch, event ids
+  included, so a timeout after a commit settles as a replay instead of a duplicate.
 - `decode` turns `{ eventType, data }` into a discriminated union. Upcasters live here, so old events
   read as current types.
-- The client does not duplicate state; its cache is the SDK's subscribed rows.
+- The client owns no state; `sliceRows` filters the rows the subscription already delivered.
+- **Planned (M5):** a subscription helper that binds `viewQuery`/`tableQuery` to handlers, including
+  reconnect and pruning by stream. It must surface reducer errors rather than swallowing them.
+- The client entry is browser-safe; integration-test tooling is a separate Node-only entry (R3).
 
 ---
 
 ## 14. Testing strategy
 
-**Unit — module harness (`spacetimedb/server/test-utils` + vitest)**
+Four layers, cheapest first. Keep them separate in exports, documentation, and CI.
 
-Port the workshop exercises one-to-one as acceptance criteria:
+### 14.1 Layer 1 — core package unit tests (maintainers)
+
+Shipped: `npm test` runs the offline suite with the in-memory harness. No server, no network.
 
 | Workshop exercise | Our test |
 | --- | --- |
@@ -780,31 +826,122 @@ Port the workshop exercises one-to-one as acceptance criteria:
 | 09 Projections | inline rows match events; rebuild converges |
 
 Package-specific: batch replay idempotency, partial-duplicate rejection, gapless position across
-streams, `es_head` rollback, state-cache drift detection, view fixture parity.
+streams, `es_head` rollback, state-cache drift detection, view fixture parity, payload validation,
+and every stable `ES_*` error code.
 
-**Integration — real host**
+Floor for R1: every public export has a direct test or is exercised by the contract suite; every
+`ES_*` error has a rejection test; `npm test` and `npm run build` are green offline. The contract
+suite is dogfooded (`test/contracts.test.ts`) so consumer tooling cannot rot.
 
-`spacetime start` → publish `es-test --delete-data` → vitest client suite: two identities appending
-concurrently, live updates over subscriptions, a parameterized view queried with literal args, cache
-hit vs replay latency on a long stream, publish smoke test over every view.
+### 14.2 Layer 2 — consumer unit tests (`stdb-es/testing`, R2)
 
-CI: `spacetime build`, `tsc --noEmit`, `vitest run`, publish example on merge.
+Shipped: `runEventStoreContractTests`, `wireEvents`, and `withIndexRanges`.
+
+Planned for M6, so a consumer can test their module and client without a server:
+
+```ts
+createModuleTest(spacetimedb, { ... });     // harness transaction + Range wrapper
+ids('evt', n);                              // deterministic, retry-safe event ids
+expectAppendError(fn, ES_ERROR.EXPECTED_VERSION_MISMATCH);
+createFakeAppend({ result?, error? });      // client tests: records calls, returns canned replies
+```
+
+Rules: no network, no Node built-ins, no server. Runner-agnostic except the optional `vitest` peer
+that the contract suite imports. A consumer should need one import and roughly ten lines for a first
+meaningful test.
+
+### 14.3 Layer 3 — consumer integration tests (`stdb-es/testing/integration`, R3)
+
+Node-only and planned for M7. It owns the lifecycle unit tests cannot:
+
+```ts
+const env = await createIntegrationEnv({
+  server: 'local' | url,
+  database: `my-app-test-${nonce}`,
+  modulePath: 'spacetimedb',                  // publishes with --delete-data
+});
+await env.call('append_events', [...]);
+await env.sql('SELECT version FROM es_stream');                  // owner
+await env.sql('SELECT * FROM summary', { anonymous: true });     // public view
+const client = await env.connect({ anonymous: true });
+await env.waitFor(() => rows.length === 1);
+await env.dispose();
+```
+
+- Readiness check, publish, identities, SQL result parsing, subscription convergence, teardown.
+- Connect-only: it never spawns `spacetime start` (see §17.5).
+- No `vitest` dependency; callable from any Node test runner or a plain script.
+- Must cover: two identities appending concurrently; live subscription convergence; parameterized
+  views with literal arguments; cache hit versus replay on a long stream; anonymous view access; and
+  stale-version rejection end to end.
+- Status: planned. `scripts/smoke-example.mjs` proves the publish path today, but it is library-
+  specific and does not ship as a consumer tool.
+
+### 14.4 Layer 4 — maintainer live smoke
+
+`npm run smoke` publishes the counter with `--delete-data`, appends, rejects a stale version, replays
+idempotently, deletes a cache row to prove replay-based recovery, and queries the anonymous view. It
+runs against `spacetime start --in-memory`.
+
+### 14.5 CI (R5)
+
+Library typecheck, example typecheck, offline `vitest run`, `spacetime build`, then the live smoke
+suite on a disposable local server. When M7 lands, the consumer integration suite joins the same
+gate. Before any release, `npm pack` must install into a fresh workspace app.
 
 ---
 
 ## 15. Milestones
 
-| # | Deliverable | Exit criteria |
-| --- | --- | --- |
-| M0 | Skeleton, `examples/counter`, publish locally; verify composite range filters, parameterized views, view read-set behavior, reducer factory typing | build + one harness test + one live subscription |
-| M1 | Tables, `appendToStream`, error codes, dedupe, head counter, payload mode chosen | exercises 01–04 green |
-| M2 | `readStream`, `getStreamState`, `aggregateStream`, time travel, view factories | 05–06 green; SQL time-travel recipe works |
-| M3 | Aggregate, Repository, state cache + version guard, registry codec | 07–08 green; cache parity test green |
-| M4 | Inline projections + `rebuildBatch` + view factories + contract tests | 09 green; drift test green; smoke test green |
-| M5 | Client SDK, docs, examples, npm metadata, CI | integration suite green; `npm pack` installs into a fresh app |
-| M6 (v1.1) | Async pump, checkpoint, dead-letter, scheduled rebuild | pump lag measured; poison-event test |
+### 15.1 Core, tooling, and documentation
+
+| # | Deliverable | Exit criteria | Status |
+| --- | --- | --- | --- |
+| M0 | Skeleton, `examples/counter`, publish locally; verify composite range filters, parameterized views, view read-set behavior, reducer factory typing | build + one harness test + one live subscription | done |
+| M1 | Tables, `appendToStream`, error codes, dedupe, head counter, payload mode chosen | exercises 01–04 green | done |
+| M2 | `readStream`, `getStreamState`, `aggregateStream`, time travel, view factories | 05–06 green; SQL time-travel recipe works | done |
+| M3 | Aggregate, Repository, state cache + version guard, registry codec | 07–08 green; cache parity test green | done |
+| M4 | Inline projections + `rebuildBatch` + view factories + contract tests + **core unit-test floor** | 09 green; drift + smoke green; every public export covered offline | done |
+| M5 | Client SDK completion (subscription helper), npm metadata, CI gate | subscription helper tested; CI runs build + typecheck + unit + smoke; `npm pack` installs into a fresh app | in progress |
+| M6 | **Consumer unit-test kit** (`stdb-es/testing`) | fake append, id helpers, and failure assertions shipped; a one-import, ~10-line consumer test needs no server | planned |
+| M7 | **Consumer integration-test kit** (`stdb-es/testing/integration`) | one call creates, publishes, and tears down a disposable database; concurrency, subscription, and anonymous-view cases green locally and remotely | planned |
+| M8 | **Developer documentation**: `docs/usage-guide.md`, `docs/API.md`, README glossary | all four guide parts present; every shipped export documented with inputs/outputs; README glossary links to both documents | documentation done |
 
 M1 is the keystone: if dedupe/version/position ordering is wrong, everything downstream inherits it.
+M6 comes before M7: the fakes define the seams the integration kit exercises.
+
+### 15.2 Example sets (planned — implementation not started)
+
+Each set is one vertical slice: **publishable module app code + a simple React client with a basic
+UI**. The existing `examples/counter` remains the basic warm-up; these sets deliberately start at
+intermediate concepts. Keep each set small: one or two streams per domain, one state table, one read
+model, one screen, one contract test file. Do not re-teach basic append/read mechanics in every set.
+
+| # | Example set | Concept focus | Module app code | Simple React UI | Explicitly out of scope |
+| --- | --- | --- | --- | --- | --- |
+| **M9** | **Idempotent order intake** | Idempotency; optimistic concurrency; client retry after timeout | `PlaceOrder` stream; `newEventId` from the client; `expectedVersion: NO_STREAM`; dedupe before version check; fake-append unit test | Order form, submit button, retry button, result banner showing `appended` vs `replayed` via the version view | No payments, no inventory, no multi-domain split |
+| **M10** | **Eventually consistent delivery tracker** | Eventual consistency between independent aggregates and client views; read-your-writes polling | `Delivery` stream plus a `Courier` stream updated by separate reducers; head view for the known version; anonymous location read model; tests assert convergence, not instant global state | Shipment status card, location list, “refresh until version N” control, pending indicator | No async pump, no cross-aggregate compensation, no payment flow |
+| **M11** | **Cross-aggregate money transfer** | Cross-aggregate coordination; process state; compensating failure | `Account` streams for two owners plus one `Transfer` process stream; `TransferRequested → Debited → Credited/Reversed`; deterministic inline projection; contract test for balanced totals | Two balances, transfer form, transfer timeline, failed/compensated state | No general saga framework, no multi-domain layout, no schema migration |
+| **M12** | **Multi-domain storefront** | Multiple domains; bounded-context boundaries; domain-separated project structure | `orders`, `inventory`, `billing` folders; one schema per module but one stream type registry per domain; domain-local caches/projections/views; cross-domain IDs only, never shared event unions | Three small panels with one shared provider; each domain owns its registry, hooks, and components | No new event-sourcing primitive, no transfer saga, no schema-evolution story |
+| **M13** | **Schema evolution** | Event schema evolution; upcasters; additive event types; cache rebuild after a fold change | `Payment` stream with legacy `CardChargedV1` payload and `CardChargedV2`; `upgrade` in the registry; one additive `PaymentMethodAdded` event; doctor-driven cache repair; fixture containing old rows | Payment list showing old and new events decoded to one current union; “rebuild cache” admin button behind an app gate | No business complexity, no multi-domain setup, no eventual-consistency demo |
+
+Each example milestone exits only when all of the following are true:
+
+1. The module publishes to a scratch database with `stdb-es` resolved from the workspace.
+2. `docs/API.md` and `docs/usage-guide.md` examples are checked against the set and amended if the
+   set exposes a documentation gap.
+3. The contract suite covers the set's aggregate and projections.
+4. The React client builds and demonstrates the named concept with visible UI state.
+5. A short README in the set explains what it teaches and what it deliberately omits.
+
+The implementation of M9–M13 is **paused pending an explicit go signal**. Only their scope is recorded
+here so they can be polished before any code is written.
+
+### 15.3 Deferred
+
+| # | Deliverable | Exit criteria | Status |
+| --- | --- | --- | --- |
+| M14 (v1.1) | Async pump, checkpoint, dead-letter, scheduled rebuild | pump lag measured; poison-event test | deferred |
 
 ---
 
@@ -812,7 +949,7 @@ M1 is the keystone: if dedupe/version/position ordering is wrong, everything dow
 
 | Risk / decision | Stance |
 | --- | --- |
-| Typed enum payload vs JSON string | **Both, JSON default.** Spike: adding a variant is automatic and non-destructive; changing a variant is a manual migration. Mode is fixed at schema construction. |
+| Typed enum payload vs JSON string | **JSON only in v1; typed enum spiked, not shipped.** Spike: adding a variant is automatic and non-destructive; changing a variant is a manual migration. Mode would be fixed at schema construction. |
 | No composite unique constraint | Enforced in the reducer; safe because transactions serialize. `eventId` PK gives cross-stream dedupe. |
 | `autoInc` is not a commit-order cursor | Explicit `es_head` row incremented in the append transaction. |
 | `Timestamp` not indexable | `createdAtMicros: u64` + `byStreamTime`. |
@@ -832,7 +969,19 @@ M1 is the keystone: if dedupe/version/position ordering is wrong, everything dow
 
 ## 17. Open decisions
 
-1. Package name/scope and license.
-2. Payload mode for the reference app: JSON default, or typed enum to showcase schema-enforced events?
-3. Should v1 ship `defineAggregate` (functional) alongside the class, or class only?
-4. State-cache default: per aggregate kind (explicit) or a shared generic table with JSON state?
+Resolved in v1:
+
+1. **Package name and license:** `stdb-es`, MIT.
+2. **Payload mode:** canonical JSON in `data: t.string()` is the shipped default. Typed enum is
+   designed and spiked (additive variants migrate automatically) but not shipped.
+3. **Aggregate form:** both shipped — `Aggregate` class plus `defineAggregate` functional helper.
+4. **State-cache default:** app-owned typed table per aggregate kind. No shared generic JSON table.
+
+Still open:
+
+5. **Integration kit lifecycle.** Connect only to an already-running server, or optionally spawn
+   `spacetime start --in-memory`? Recommendation: connect-only in v1. Spawning is a convenience for
+   a later `startServer()` helper behind an explicit option, so CI keeps one owner of the process.
+6. **Contract-test runner.** Keep the optional `vitest` peer, or split assertions into a runner-
+   agnostic core plus a thin `vitest` adapter? Recommendation: keep `vitest` for v1; the rest of the
+   testing entry stays runner-agnostic.

@@ -1,0 +1,355 @@
+# API reference
+
+This is the complete reference for the **shipped** `stdb-es` consumer API. For task-oriented examples,
+see the [Package Usage Guide](usage-guide.md). Planned APIs are listed at the end and are not
+available yet.
+
+> Requires `spacetimedb >= 2.15 < 3`. JSON event payloads are the only implemented payload mode.
+> TypeScript server modules only. `vitest` is an optional peer needed only by `stdb-es/testing`.
+
+## Import map
+
+| Import | Intended environment | Contents |
+| --- | --- | --- |
+| `stdb-es` | module or client | Stable error codes, error helpers, protocol types and constants |
+| `stdb-es/server` | SpacetimeDB module only | Tables, append/read, aggregates, repositories, projections, views, doctor |
+| `stdb-es/client` | browser or Node client | Registry, encoding, append client, row helpers, subscription query helpers |
+| `stdb-es/testing` | Vitest tests | Harness shim, fixtures, contract suite |
+
+Conventions used below:
+
+- **Inputs** are positional arguments unless shown as an object. `readonly` arrays are accepted
+  wherever an array appears.
+- **Output** describes the synchronous return value. Reducers return `void`; clients observe results
+  through subscriptions/views.
+- **Throws** means a `SenderError` with a stable `ES_*` message prefix unless another error type is
+  named.
+- Types are erased at runtime but are part of the public API and documented here.
+
+---
+
+## 1. `stdb-es` — shared surface
+
+Safe to import from both module and client code. It does not import the SpacetimeDB server runtime.
+
+### 1.1 `ES_ERROR`
+
+`ES_ERROR` is a frozen object of stable error-code strings. Match on `esErrorCode(error)`, never on
+the human-readable detail.
+
+| Member | Value | Meaning |
+| --- | --- | --- |
+| `EXPECTED_VERSION_MISMATCH` | `ES_EXPECTED_VERSION_MISMATCH` | The stream version did not match `expectedVersion` |
+| `EVENT_ID_CONFLICT` | `ES_EVENT_ID_CONFLICT` | An event id in the batch already belongs to another stream |
+| `PARTIAL_DUPLICATE` | `ES_PARTIAL_DUPLICATE` | Some, but not all, event ids in the batch already exist |
+| `STREAM_TYPE_MISMATCH` | `ES_STREAM_TYPE_MISMATCH` | The stream exists with a different `streamType` |
+| `INVALID_BATCH` | `ES_INVALID_BATCH` | Empty/oversized batch, bad stream id, duplicate id in batch, or unknown sentinel |
+| `UNKNOWN_EVENT_TYPE` | `ES_UNKNOWN_EVENT_TYPE` | Empty event type, or a type rejected by `eventTypes`/the registry |
+| `INVALID_EVENT_ID` | `ES_INVALID_EVENT_ID` | Missing, empty, or over-long event id |
+| `INVALID_PAYLOAD` | `ES_INVALID_PAYLOAD` | Missing, empty, over-long, or non-JSON `data` |
+
+### 1.2 Error helpers
+
+| Symbol | Purpose | Inputs | Output |
+| --- | --- | --- | --- |
+| `buildEsErrorMessage(code, detail)` | Formats the canonical error message | `code: EsErrorCode`, `detail: string` | `string` of the form `"CODE: detail"` |
+| `esErrorCode(error)` | Extracts the stable code from a thrown value | `error: unknown` | `EsErrorCode` when the message starts with a known code (or equals it), otherwise `null` |
+| `isEsError(error)` | Tests whether an error came from the store | `error: unknown` | `boolean` — `esErrorCode(error) !== null` |
+
+`EsErrorCode` is the union of all values in `ES_ERROR`.
+
+### 1.3 Protocol constants
+
+| Symbol | Value | Purpose |
+| --- | --- | --- |
+| `ANY_VERSION` | `-1` | Skip the expected-version check |
+| `NO_STREAM` | `0` | Require that the stream does not exist |
+| `STREAM_EXISTS` | `-2` | Require that the stream exists |
+
+Versions are 1-based, so negative values are safe sentinels. Any other negative value is
+`ES_INVALID_BATCH`.
+
+### 1.4 Protocol types
+
+These are re-exported by `stdb-es/server`.
+
+| Type | Fields / payload | Notes |
+| --- | --- | --- |
+| `CtxOf<M>` | Type parameter: a SpacetimeDB `Schema` | Reducer context inferred from an app schema. Use it to type cache adapters and hooks. |
+| `EncodedEvent` | `eventId: string`, `eventType: string`, `data: string`, `metadata?: string \| null` | The wire shape accepted by `appendToStream`. `data` must be canonical JSON. |
+| `ExpectedVersion` | `number` | A concrete 1-based version or one of the sentinels above |
+| `AppendArgs` | `streamId`, `streamType`, `events: readonly EncodedEvent[]`, `expectedVersion`, `metadata?` | Input to `appendToStream` |
+| `AppendResult` | `{ status: 'appended', version, rows }` or `{ status: 'replayed', version, rows }` | `rows` are inserted rows for `appended`, existing rows for `replayed`. `version` is the stream version after the batch. |
+| `EventStoreConfig<C>` | `eventTypes?`, `maxBatchSize?`, `maxPayloadLength?`, `onAppended?` | Store configuration. `C` is the full app context so `onAppended` sees app tables. |
+| `ReadStreamOptions` | `fromVersion?`, `atVersion?`, `atTimestampMicros?`, `limit?` | `fromVersion` defaults to 1; bounds intersect; `limit` applies after ordering. |
+| `DecodedEvent<TEvent>` | `eventType: string`, `data: TEvent` | Produced by `parsePayload` and passed to `evolve` |
+| `AggregateStreamOptions<TState, TEvent>` | `AggregateDefinition` fields plus `ReadStreamOptions` | Input to `aggregateStream` |
+| `FoldOptions<TState, TEvent>` | `initial: TState`, `decode(row)`, `evolve(state, decoded, row)` | Input to `foldEvents` |
+
+`EventStoreConfig.onAppended(ctx: C, result: AppendResult): void` runs inside the append transaction
+and only for `status: 'appended'`. A throw rolls the append back. Defaults: `maxBatchSize = 100`,
+`maxPayloadLength = 64 * 1024` characters, no registered-type restriction.
+
+---
+
+## 2. `stdb-es/server` — module API
+
+### 2.1 Tables and context types
+
+| Symbol | Purpose | Shape / output |
+| --- | --- | --- |
+| `GLOBAL_HEAD` | Primary key of the single head row | The string `'global'` |
+| `esStream` | Private stream catalogue and concurrency row | Columns: `streamId` (PK), `streamType`, `version`, `createdAt`, `updatedAt`, `metadata` (option). Index: `byType`. |
+| `esEvent` | Private append-only event log | Columns: `eventId` (PK), `position: u64`, `streamId`, `streamType`, `version`, `eventType`, `data`, `metadata`, `createdAt`, `createdAtMicros: u64`, `createdBy`. Indexes: `byPosition`, `byStreamVersion`, `byStreamTime`, `byType`. |
+| `esHead` | Private global position counter | Columns: `id` (PK), `position: u64` |
+| `esTables` | Spread into an app schema | `{ esStream, esEvent, esHead }` |
+| `EsTables` | Type of `esTables` | Compile-time only |
+| `EsSchemaDef` | Schema definition containing only core tables | Compile-time only |
+| `EsDb` | Read-only database view over the core tables | Compile-time only |
+| `EsReadCtx` | Minimal context for read helpers | `{ readonly db: EsDb }` |
+| `EsCtx` | Full reducer context required by write helpers | `ReducerCtx<EsSchemaDef>` |
+| `StreamRow` | Inferred row type of `esStream` | Compile-time only |
+| `EventRow` | Inferred row type of `esEvent` | Compile-time only |
+| `HeadRow` | Inferred row type of `esHead` | Compile-time only |
+
+The library never updates or deletes `esEvent` rows except through the append path, and it exports no
+public table containing raw events.
+
+| Function | Purpose | Inputs | Output / throws |
+| --- | --- | --- | --- |
+| `esError(code, detail)` | Throws a reducer-visible store error | `code: EsErrorCode`, `detail: string` | Throws `SenderError` with message `CODE: detail` |
+
+### 2.2 Appending
+
+| Function | Purpose | Inputs | Output / throws |
+| --- | --- | --- | --- |
+| `appendToStream(ctx, args, config?)` | Validates and appends a batch in the caller's transaction | `ctx: C extends EsCtx`, `args: AppendArgs`, optional `EventStoreConfig<C>` | `AppendResult`. Throws the `ES_*` errors listed in §1.1. |
+| `makeAppendReducer(schema, config?)` | Builds the app's generic `append_events` reducer | `schema: M extends Schema`, optional `EventStoreConfig<CtxOf<M>>` | A reducer definition exported by the app. Calling the reducer returns `void`. |
+
+Generated reducer parameters are:
+
+```ts
+{
+  streamId: string;
+  streamType: string;
+  expectedVersion: number;
+  events: Array<{ eventId: string; eventType: string; data: string; metadata?: string | null }>;
+  metadata?: string | null;
+}
+```
+
+Append order and guarantees:
+
+1. Validate ids/types/payloads. `streamId` ≤ 256 chars, `eventId` ≤ 128 chars, batch 1–100 events by
+   default, payload 1–64 KiB and valid JSON.
+2. Deduplicate **before** the version check. All ids already present on the same stream return
+   `replayed`; a foreign id throws `EVENT_ID_CONFLICT`; a partial match throws `PARTIAL_DUPLICATE`.
+3. Check stream type, then `expectedVersion`.
+4. Insert events with gapless versions and positions, update `es_stream` and `es_head`, then call
+   `onAppended`. All of this is one transaction.
+
+### 2.3 Reads and time travel
+
+| Function | Purpose | Inputs | Output |
+| --- | --- | --- | --- |
+| `readStream(ctx, streamId, opts?)` | Reads events in version order | `ctx: EsReadCtx`, `streamId: string`, optional `ReadStreamOptions` | `EventRow[]`, sorted by `version` ascending; `[]` when no rows match |
+| `getStreamState(ctx, streamId)` | Reads the stream catalogue row | `ctx: EsReadCtx`, `streamId: string` | `StreamRow \| null` |
+| `streamVersion(ctx, streamId)` | Reads the concurrency token | `ctx: EsReadCtx`, `streamId: string` | `number` — last version, or `0` when the stream does not exist |
+| `listStreams(ctx, streamType?)` | Lists streams | `ctx: EsReadCtx`, optional `streamType: string` | `StreamRow[]` |
+| `foldEvents(rows, opts)` | Folds decoded events into a state value | `rows: readonly EventRow[]`, `FoldOptions` | `TState` |
+| `aggregateStream(ctx, streamId, opts)` | Replays a stream into state | `ctx: EsReadCtx`, `streamId: string`, `AggregateStreamOptions` | `TState \| null` — `null` when the stream does not exist |
+| `parsePayload(row, parse?)` | Decodes one row's `data` column | `row: EventRow`, optional `parse: (json: string) => TEvent` (default `JSON.parse`) | `DecodedEvent<TEvent>` |
+
+`readStream` uses the `(streamId, version)` index for version bounds and the
+`(streamId, createdAtMicros)` index for time bounds. When both are supplied, rows must satisfy both.
+`limit` is applied after sorting. Timestamps are processing time; business time belongs in the
+payload.
+
+### 2.4 Aggregates
+
+| Symbol | Purpose | Inputs / members | Output / notes |
+| --- | --- | --- | --- |
+| `AggregateDefinition<TState, TEvent>` | Functional description of an aggregate kind | `streamType`, `initial(): TState`, `decode(row): TEvent`, `evolve(state, event, row): TState` | Shared by replay, repositories, and doctor fixtures. `evolve` must be deterministic. |
+| `defineAggregate(definition)` | Identity helper with type inference | An `AggregateDefinition` | The same definition, typed |
+| `Aggregate<TState, TEvent>` | Optional class form | `id`, `initial` constructor args; `version`; `state` getter; `apply(event, version)`; `hydrate(state, version)`; `uncommitted`; `dequeueUncommitted()`; protected `evolve` and `raise` | `raise` applies and queues an event; `apply`/`hydrate` never queue. Prefer `defineAggregate` with a repository when cache/replay parity matters. |
+
+### 2.5 Repositories and state caches
+
+| Symbol | Purpose | Inputs / fields | Output / notes |
+| --- | --- | --- | --- |
+| `CachedState<TState>` | One cache row as seen by the library | `version: number`, `state: TState` | Returned by `StateCache.load` |
+| `StateCache<TState, C>` | Adapter over an app-owned typed table | `load(ctx, streamId)`, `save(ctx, streamId, version, state)`, `remove(ctx, streamId)` | `load` returns `CachedState \| null`. `save`/`remove` return `void`. |
+| `EncodedDomainEvent` | Encoder output for one domain event | `eventType: string`, `data: unknown`, `metadata?: string \| null` | `data` is JSON-serialized by the repository |
+| `EventEncoder<TEvent>` | Converts a domain event to wire data | `(event: TEvent) => EncodedDomainEvent` | Must be deterministic |
+| `RepositoryOptions<TState, TEvent, C>` | Repository configuration | AggregateDefinition fields plus `encode`, optional `cache`, optional `newEventId(ctx)` | `newEventId` defaults to `ctx.newUuidV7().toString()` |
+| `LoadedAggregate<TState>` | A loaded or fresh aggregate | `id`, `version`, `state` | `version = 0` means no events |
+| `LoadOptions` | Bounds for `Repository.load` / `loadOrCreate` | `atVersion?`, `atTimestampMicros?` | A time bound forces replay; a version bound ignores newer caches |
+| `SaveOptions` | Options for `Repository.save` | `expectedVersion?`, `metadata?` | `expectedVersion` defaults to `aggregate.version` |
+| `Repository<TState, TEvent, C>` | Typed command-side access to one aggregate kind | Constructed with `RepositoryOptions` | Methods below |
+| `makeRepository(definition, opts)` | Builds a repository from an aggregate definition | `definition`, options excluding the definition fields | `Repository` |
+
+`Repository` methods:
+
+| Method | Inputs | Output / behavior |
+| --- | --- | --- |
+| `create(id)` | `id: string` | `LoadedAggregate` with initial state and version 0 |
+| `load(ctx, id, opts?)` | Context, id, optional `LoadOptions` | `LoadedAggregate \| null`. Cache is used only when `version <= stream.version`, `version <= atVersion` when set, and no time bound is set. The remaining tail is replayed. |
+| `loadOrCreate(ctx, id, opts?)` | Same as `load` | `LoadedAggregate`; falls back to `create` when the stream is missing |
+| `save(ctx, aggregate, events, opts?)` | Context, aggregate, events, optional `SaveOptions` | `AppendResult \| null`. Returns `null` for an empty event array. Appends with the expected version, folds new rows into the aggregate, and writes the cache. A replayed batch is not folded twice. |
+| `invalidate(ctx, streamId)` | Context, id | `void`; removes the cache row so the next load replays |
+
+A missing cache row is always recovered by replay. A stale cache degrades performance, not
+correctness.
+
+### 2.6 Projections
+
+| Symbol | Purpose | Inputs / fields | Output / notes |
+| --- | --- | --- | --- |
+| `InlineProjection<C>` | A projection handler | `name`, `handles: readonly string[]`, `handle(ctx, event)`, optional `reset(ctx)` | Runs in the append transaction. Must be deterministic; no clock/RNG-derived business values. `reset` is required for `rebuildBatch({ reset: true })`. |
+| `RebuildOptions` | Bounds for a rebuild | `fromPosition?: bigint` (exclusive), `limit?: number`, `reset?: boolean` | Use bounded batches in admin reducers |
+| `RebuildResult` | Rebuild report | — | `{ processed: number, lastPosition: bigint \| null, projections: string[] }` |
+| `applyInline(ctx, projections, rows)` | Runs matching projections for appended rows | Context, projections, `EventRow[]` | `void`. Called from `onAppended`. |
+| `rebuildBatch(ctx, projections, opts?)` | Replays committed events through projections | Context, projections, optional `RebuildOptions` | `RebuildResult`. A handler failure rolls back the batch and throws an error naming the projection and event position. |
+
+Projections are synchronous and inline in v1. There is no async checkpoint pump.
+
+### 2.7 View factories
+
+| Symbol | Purpose | Inputs | Output |
+| --- | --- | --- | --- |
+| `Authorize<C>` | Authorization predicate type | `(ctx: C, streamId: string) => boolean` | `true` allows the view to return data |
+| `StreamViewOptions<M>` | Options shared by factories | `name: string`, `authorize: Authorize<CtxOf<M>>` | `name` must be unique in the module |
+| `makeStreamView(schema, opts)` | Exposes one stream's events | App schema, options | Public parameterized view with param `{ streamId }`; returns `EventRow[]` sorted by version, or `[]` when unauthorized |
+| `makeStreamAtView(schema, opts)` | Exposes a version prefix | App schema, options | Public view with params `{ streamId, atVersion }`; returns `EventRow[]` up to that version, or `[]` |
+| `makeStreamHeadView(schema, opts)` | Exposes only stream metadata | App schema, options | Public view with param `{ streamId }`; returns `StreamRow \| undefined`, never payloads |
+
+Views are always public in SpacetimeDB. `authorize` is a required argument; the factories never ship
+an unchecked view. Use identity `.equals()` rather than `===` inside predicates.
+
+### 2.8 Doctor helpers
+
+| Symbol | Purpose | Inputs | Output |
+| --- | --- | --- | --- |
+| `StreamProblem` | Structural problem union | — | One of `stream-version-mismatch`, `version-gap`, `version-duplicate`, `stream-type-mismatch`, `empty-stream`, each with details |
+| `StreamIntegrity` | Integrity report | — | `{ streamId, streamType: string \| null, eventCount, problems: StreamProblem[], ok }` |
+| `verifyStreamIntegrity(ctx, streamId)` | Checks structural consistency | `EsReadCtx`, id | `StreamIntegrity`. A missing stream is `ok: true` with `streamType: null`. |
+| `CacheVerification<TState>` | Cache comparison report | — | `{ streamId, exists, streamVersion, cachedVersion, cachedState, replayedState, ok }` |
+| `VerifyCacheOptions<C, TState>` | Options for state verification | `cache`, `replay`, optional `equal` | `replay` must ignore the cache; default `equal` is bigint-safe and key-order-independent |
+| `verifyStreamState(ctx, streamId, opts)` | Compares cache with full replay | Context, id, options | `CacheVerification<TState>`. Detects missing/stale caches and same-version drift. |
+| `findDrift(ctx, opts)` | Finds all failing streams | Context, `VerifyCacheOptions` plus optional `streamType` | `CacheVerification<TState>[]` containing only `ok: false` rows |
+| `RepairAction` | Result of a repair | — | `'unchanged' \| 'repaired' \| 'removed'` |
+| `RepairOptions<C, TState>` | Options for repair | `cache`, `replay`, optional `equal` | Same replay/equality rules as verification |
+| `repairStream(ctx, streamId, opts)` | Rewrites or removes one cache row | Context, id, options | `RepairAction`. Orphan cache rows are removed; stale or drifted rows are rewritten from replay at the stream version. |
+
+The library exports no repair reducer. Expose one from your app behind an authorization gate.
+
+---
+
+## 3. `stdb-es/client` — browser-safe client API
+
+### 3.1 Registry and encoding
+
+| Symbol | Purpose | Inputs / fields | Output |
+| --- | --- | --- | --- |
+| `StoredEventRow` | Minimal row shape delivered by a view | `eventId`, `position: bigint`, `streamId`, `streamType`, `version`, `eventType`, `data: string`, optional `metadata`, `createdAtMicros` | Compile-time only. Extra generated-row fields are harmless. |
+| `DecodedEventRow<TEvent>` | Envelope plus domain event | `Omit<StoredEventRow, 'data'>` plus `event: TEvent` | Returned by `decode`/`decodeAll`/`sliceRows` |
+| `EventDefinition<TEvent, TPayload>` | Codec for one event type | `encode(event): TPayload`, `decode(payload): TEvent`, optional `upgrade(payload: unknown): TPayload` | `upgrade` runs before `decode`; use it for old payload shapes |
+| `EventRegistry<TEvent>` | Map of event types to codecs | `typeOf(event): string`, `definitions: Record<string, EventDefinition>` | Shared by encode and decode paths |
+| `createEventRegistry(input)` | Builds a registry | `{ typeOf, events }` | `EventRegistry<TEvent>` |
+| `EncodeOptions` | Encoding options | `newEventId?(): string`, `metadata?: string \| null` | `newEventId` defaults to `crypto.randomUUID()` |
+| `encodeEvents(registry, events, opts?)` | Encodes domain events to wire rows | Registry, events, options | `EncodedEvent[]` with JSON-stringified `data`. Throws `ES_UNKNOWN_EVENT_TYPE` for an unregistered type. |
+| `decodeEvent(registry, row)` | Decodes one stored row | Registry, `StoredEventRow` | `TEvent`. Throws `ES_UNKNOWN_EVENT_TYPE` for an unknown `eventType`. |
+| `ReadRowsOptions` | Filters for subscribed rows | `streamId?`, `fromVersion?`, `atVersion?`, `atTimestampMicros?`, `limit?` | Bounds intersect |
+| `sliceRows(rows, opts?)` | Filters and sorts decoded rows | `DecodedEventRow[]`, options | `DecodedEventRow[]` sorted by `version`; timestamps are compared only when present |
+
+The registry is client-side: the server stores opaque JSON. Adding an event type is an app/registry
+change, not a database migration.
+
+### 3.2 Append client
+
+| Symbol | Purpose | Inputs / fields | Output |
+| --- | --- | --- | --- |
+| `AppendCallArgs` | Shape passed to the generated reducer callback | `streamId`, `streamType`, `expectedVersion: number`, `events: EncodedEvent[]`, `metadata: string \| null` | Compile-time only |
+| `AppendCall` | Reducer callback type | `(args: AppendCallArgs) => Promise<unknown>` | The resolved value is ignored |
+| `EventStoreClientOptions<TEvent>` | Client configuration | `append: AppendCall`, `registry`, optional `newEventId` | Compile-time only |
+| `AppendOptions` | Per-call options | `expectedVersion?`, `metadata?`, `newEventId?` | `expectedVersion` defaults to `ANY_VERSION` |
+| `createEventStoreClient(opts)` | Builds a thin append/decode client | Options above | Client object with the methods below |
+| `EventStoreClient<TEvent>` | Return type of `createEventStoreClient` | — | Compile-time only |
+
+Methods on the returned client:
+
+| Method | Inputs | Output / behavior |
+| --- | --- | --- |
+| `encode(events, options?)` | Domain events, options | `EncodedEvent[]`. Does not send. Reuse the result with `retry`. |
+| `append(streamId, streamType, events, options?)` | Ids, domain events, options | `Promise<void>`. Encodes fresh ids and calls the injected append callback. |
+| `retry(streamId, streamType, encoded, options?)` | Ids, previously encoded batch, options | `Promise<void>`. Sends the same event ids verbatim so a committed-but-timed-out call deduplicates as `replayed`. |
+| `decode(row)` | `StoredEventRow` | `DecodedEventRow<TEvent>`; removes `data` and adds `event` |
+| `decodeAll(rows)` | `StoredEventRow[]` | `DecodedEventRow<TEvent>[]` |
+| `registry` | — | The registry passed at construction |
+
+The client owns no state and performs no subscription management.
+
+### 3.3 Subscription query helpers
+
+| Symbol | Purpose | Inputs | Output / throws |
+| --- | --- | --- | --- |
+| `sqlString(value)` | Escapes a SQL string literal | `value: string` | Quoted string with `'` doubled |
+| `SqlLiteral` | Accepted view argument type | — | `string \| number \| bigint \| boolean \| null` |
+| `sqlLiteral(value)` | Formats one SQL literal | `SqlLiteral` | `string`. Rejects non-finite numbers. |
+| `viewQuery(name, args?)` | Builds a parameterized-view subscription query | View name, literal args in declaration order | `SELECT * FROM <name>(<args>)`. Throws on an invalid identifier. |
+| `tableQuery(name)` | Builds a table/anonymous-view query | Table name | `SELECT * FROM <name>`. Throws on an invalid identifier. |
+
+Use `viewQuery('order_stream', ['order-42'])` rather than constructing SQL from raw user input.
+
+---
+
+## 4. `stdb-es/testing` — offline test tooling
+
+Imports `vitest` at runtime, so install it as a dev dependency.
+
+### 4.1 Harness shim and fixtures
+
+| Symbol | Purpose | Inputs | Output |
+| --- | --- | --- | --- |
+| `withIndexRanges(ctx)` | Makes SpacetimeDB 2.15 harness range scans behave like the real host | Reducer/view context | The same context type with shimmed `db.esEvent` range accessors. Safe no-op after re-wrapping. |
+| `wireEvent(eventId, eventType, payload)` | Builds one wire event | `eventId`, `eventType`, JSON-serializable payload | `EncodedEvent` with `data: JSON.stringify(payload)` |
+| `wireEvents(prefix, pairs)` | Builds a deterministic batch | `prefix: string`, pairs of `[eventType, payload]` | `EncodedEvent[]` with ids `${prefix}-1`, `${prefix}-2`, … |
+| `versions(rows)` | Compact version assertions | Rows with a `version` field | `number[]` |
+
+`withIndexRanges` works around a duplicate `Range` class inside the 2.15 module test harness. The
+production host is unaffected; do not add the wrapper to module code.
+
+### 4.2 Contract suite
+
+| Type | Purpose | Fields |
+| --- | --- | --- |
+| `ContractStream<TState, TEvent>` | One aggregate kind under contract | `streamType`, `repository`, `stateCache`, `replay`, `sample` |
+| `ContractStream.sample` | Fixture events and expected state | `wire(streamId): EncodedEvent[]` with deterministic ids; `domain(streamId): TEvent[]`; `expectedState: TState`; optional `corrupt(state): TState` |
+| `ContractProjections` | Optional projection check | `projections: readonly InlineProjection[]`, `snapshot(ctx): unknown` in stable order |
+| `ContractView` | Optional view check | `name`, `view`, `params(streamId)`, optional `seed(ctx, streamId)`, `check(result, streamId)` |
+| `EventStoreContractOptions` | Suite configuration | `name?`, `spacetimedb`, `moduleExports?`, `append`, `streams`, `projections?`, `views?`, `streamId?(stream)` |
+
+| Function | Purpose | Inputs | Output / behavior |
+| --- | --- | --- | --- |
+| `runEventStoreContractTests(options)` | Registers the shared contract suite | Options above | `void`; registers Vitest `describe`/`it` cases at call time. Each case builds a fresh harness and wraps contexts with `withIndexRanges`. |
+
+Covered invariants: append/read ordering, gapless positions, stale-version rejection with fresh ids,
+idempotent replay, repository/cache agreement, structural integrity, time travel, same-version drift
+detection and repair, projection rebuild parity, and view output.
+
+For stale-version tests, generate **fresh** event ids. Dedupe runs before the version check, so
+resubmitting identical ids is a valid replay even when `expectedVersion` is stale.
+
+---
+
+## 5. Not shipped / planned
+
+Do not import these; they have no runtime implementation yet.
+
+| Item | Milestone | Planned purpose |
+| --- | --- | --- |
+| `createModuleTest`, `ids`, `expectAppendError`, `createFakeAppend` | M6 | One-import consumer unit-test helpers for module contexts, ids, error assertions, and client append fakes |
+| `stdb-es/testing/integration` with `createIntegrationEnv` | M7 | Node-only publish/call/SQL/connect/wait/dispose lifecycle against an already-running server |
+| Subscription helper | M5 | Binds view/table queries to handlers with reconnect and pruning |
+| Typed-enum payload mode | later | Schema-enforced event unions; currently only designed and spiked |
+| Async projection pump, `es_checkpoint`, dead-letter, scheduled rebuild | M14 (v1.1) | Offload expensive projections without changing the event model |

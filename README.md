@@ -12,6 +12,14 @@ a second database, a message broker, or a separate read-model store.
 > JSON event payloads are the only implemented mode; typed-enum payloads are designed but not
 > shipped yet. TypeScript server modules only.
 
+## Documentation
+
+- [Package Usage Guide](docs/usage-guide.md) — module code, client code, testing, and a simple React
+  frontend, including domain-separated project layouts.
+- [API reference](docs/API.md) — every shipped export, its inputs, and its outputs.
+- [SQL recipes](docs/sql-recipes.md) — owner-only inspection and repair queries.
+- [Design record](docs/event-sourcing-plan.md) — decisions, rejected alternatives, and milestones.
+
 ## Design rules
 
 These are not conventions; the library and its tests are built around them.
@@ -26,6 +34,50 @@ These are not conventions; the library and its tests are built around them.
 4. **A state cache is not a snapshot.** It is a current-state projection written in the same
    transaction as the events it summarizes. Deleting it costs a replay, as long as a missing cache is
    rebuilt from the log rather than treated as empty state.
+
+## Glossary
+
+These are the terms used by the API and the guides. "Server" means SpacetimeDB module code;
+"client" means browser or other SDK code.
+
+| Term | Meaning in `stdb-es` |
+| --- | --- |
+| **Stream** | One append-only sequence of events for one business object or process, identified by a stream id. It is the unit of optimistic concurrency. |
+| **Stream id** | The caller-supplied primary key of a stream, for example `order-42`. The same id must always use the same stream type. |
+| **Stream type** | The aggregate/process kind recorded on a stream, such as `Order` or `Transfer`. It lets one module host many kinds of streams. |
+| **Event** | A fact that has happened. It is stored as an immutable row in the private `es_event` table. |
+| **Event envelope** | The stable stored columns around the payload: `eventId`, `position`, `streamId`, `streamType`, `version`, `eventType`, `metadata`, timestamps, and sender. |
+| **Event id** | A globally unique id supplied by the caller. The primary key on `es_event.eventId` is what makes retries idempotent. Generate a fresh one for each genuinely new event; reuse the same ones when retrying a batch. |
+| **Event type** | The string that selects a codec in the client registry, such as `Incremented`. It is not the stream type. |
+| **Payload / `data`** | The JSON-serializable body of an event, stored as canonical JSON in a string column. The server validates that it is JSON but does not interpret its shape. |
+| **Metadata** | Optional JSON-or-text context attached to an append or an individual event. The store carries it without interpreting it. |
+| **Version** | The 1-based position of an event inside one stream. The stream's current version is its concurrency token. |
+| **Expected version** | The version the caller believes is current. The append fails with `ES_EXPECTED_VERSION_MISMATCH` if the belief is wrong. |
+| **Sentinel** | A special `expectedVersion` value: `ANY_VERSION` (-1) skips the check, `NO_STREAM` (0) requires a new stream, and `STREAM_EXISTS` (-2) requires an existing one. |
+| **Position** | A gapless, commit-ordered number assigned to every event across the whole database. It is the cursor for rebuilds, not a per-stream version. |
+| **Head** | The single counter that assigns positions. It lives in the private `es_head` table and is updated in the append transaction. |
+| **Append** | The write operation: validate, deduplicate, check concurrency, insert events, advance the head and stream version, then run hooks. All of it is one transaction. |
+| **Replay** | Reading a stream and folding its events into state, either in full or from a given version onward. A missing state cache must be recovered by replay. |
+| **Dedupe** | Detecting that an event id was already committed. A whole repeated batch returns `replayed`; a partial repeat is rejected because it is ambiguous. |
+| **`appended` vs `replayed`** | The two `AppendResult` statuses. `appended` means new rows were written; `replayed` means the identical batch had already committed. Hooks run only for `appended`. |
+| **Aggregate** | A typed state value plus the rules for applying events to it. `defineAggregate` describes it functionally; the `Aggregate` class is an optional object form. |
+| **Fold / `evolve`** | The deterministic function `(state, event) => nextState`. Replay, repository loads, projections, and doctor repair must share equivalent logic. |
+| **State cache** | An app-owned private table holding current aggregate state at a known version. It is a performance cache, not the source of truth. |
+| **Version guard** | The rule that a cache row is trusted only when its version is usable for the requested read. Stale, future, or time-travel-incompatible rows are ignored and replay fills the gap. |
+| **Drift** | A cache that disagrees with a replay. Same-version drift cannot be seen by the version guard, so the doctor compares state as well. |
+| **Projection** | A handler that consumes events and maintains another representation, such as a totals table. Inline projections commit with the append; v1 has no async pump. |
+| **Rebuild** | Replaying all (or a bounded range of) events through projections to reconstruct a read model, or rewriting a state cache from the log. |
+| **View** | A public, queryable server function. Because SpacetimeDB views are public, the library ships only factories that require an app `authorize` predicate. |
+| **Read model** | Client-visible query output: an app-owned view over events/cache tables, or a materialized table maintained by a projection. |
+| **Subscription** | A client query whose results are pushed as rows change. `viewQuery()` and `tableQuery()` build the SQL strings used by SpacetimeDB subscriptions. |
+| **Upcast / `upgrade`** | Converting an old stored payload to the current shape before decoding. This is how schema evolution avoids rewriting the event log. |
+| **Registry** | The client-side map from event type strings to codecs (`encode`, `decode`, optional `upgrade`). It is shared by append and decode paths. |
+| **Domain / bounded context** | A business boundary with its own event types, aggregates, caches, and views. In a multi-domain app, group code by domain and share ids, not event unions. |
+| **Cross-aggregate** | An operation that coordinates more than one aggregate stream. Model it with a process stream and deterministic commands, not a transaction spanning unrelated aggregates. |
+| **Optimistic concurrency** | Assuming no conflict, appending with an expected version, and failing loudly if another writer won. Retrying with fresh event ids is the recovery path. |
+| **Time travel** | Reading state or events as of a version or processing timestamp. Timestamp bounds intersect with version bounds; version is the authoritative order. |
+| **Command / reducer** | The server write path. A reducer receives arguments, loads or creates an aggregate, decides events, and appends them. |
+| **Contract test** | A suite from `stdb-es/testing` that runs the app's real module through the harness and checks append, cache, projection, and view invariants. |
 
 ## Install
 
