@@ -43,7 +43,8 @@ These are the terms used by the API and the guides. "Server" means SpacetimeDB m
 | Term | Meaning in `stdb-es` |
 | --- | --- |
 | **Stream** | One append-only sequence of events for one business object or process, identified by a stream id. It is the unit of optimistic concurrency. |
-| **Stream id** | The caller-supplied primary key of a stream, for example `order-42`. The same id must always use the same stream type. |
+| **Stream id** | The caller-supplied primary key of a stream, for example `order-42`. The same id must always use the same stream type. Use the shared `streamId(prefix, key)` helper to format and validate it. |
+| **Stream id helper** | `streamId(prefix, key)` from `stdb-es`: builds `<prefix>-<key>`, rejects unsafe characters, and enforces the 256-character limit. Formatting only — ownership is still an app decision. |
 | **Stream type** | The aggregate/process kind recorded on a stream, such as `Order` or `Transfer`. It lets one module host many kinds of streams. |
 | **Event** | A fact that has happened. It is stored as an immutable row in the private `es_event` table. |
 | **Event envelope** | The stable stored columns around the payload: `eventId`, `position`, `streamId`, `streamType`, `version`, `eventType`, `metadata`, timestamps, and sender. |
@@ -560,7 +561,7 @@ the head counter, and every projection.
 
 | Import | Contents |
 | --- | --- |
-| `stdb-es` | Error codes and protocol types (safe from client and server code) |
+| `stdb-es` | Error codes, the `streamId(prefix, key)` helper, and protocol types (safe from client and server code) |
 | `stdb-es/server` | Tables, append/read, repository, projections, view factories, doctor |
 | `stdb-es/client` | Event registry, encoding, append client, subscription query helpers |
 | `stdb-es/testing` | Contract tests, fixtures, and the `withIndexRanges` harness shim |
@@ -569,7 +570,7 @@ the head counter, and every projection.
 
 ```bash
 npm install
-npm test              # 79 tests, in-memory harness
+npm test              # 85 tests, in-memory harness
 npm run build         # tsc -> dist (declarations included)
 npm run smoke         # publish the example and run the live smoke test
 ```

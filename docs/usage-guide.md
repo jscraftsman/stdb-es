@@ -49,7 +49,8 @@ spacetimedb/
     index.ts                  # schema assembly only
     domains/
       orders/
-        events.ts             # domain event union + event type strings
+        constants.ts          # STREAM_TYPES_ORDER, EVENT_TYPES_ORDER, TABLES_ORDER, VIEWS_ORDER
+        events.ts             # domain event union
         aggregate.ts          # initial + decode + evolve
         cache.ts              # StateCache adapter over orders_state
         projections.ts        # InlineProjection definitions
@@ -57,6 +58,7 @@ spacetimedb/
         reducers.ts           # command reducers
         orders.test.ts        # module unit tests
       inventory/
+        constants.ts
         events.ts
         aggregate.ts
         cache.ts
@@ -65,13 +67,13 @@ spacetimedb/
         reducers.ts
         inventory.test.ts
       billing/
+        constants.ts
         events.ts
         aggregate.ts
         cache.ts
         views.ts
         reducers.ts
     shared/
-      ids.ts                  # stream-id conventions
       auth.ts                 # authorize helpers reused by views
 ```
 
@@ -84,6 +86,41 @@ Rules for domain separation:
 - Use distinct table names such as `orders_state` and `billing_invoice` to avoid collisions.
 - A view cannot be called from a reducer. If module logic needs a read model, materialize it as a
   table in the same transaction.
+
+#### App-owned constants convention
+
+`stdb-es` exports constants only for its own protocol (`GLOBAL_HEAD`, `ANY_VERSION`, `ES_ERROR`,
+etc.). Stream types, event types, table names, and view names belong to **your app**, so keep them in
+a `constants.ts` file inside each domain. Use the naming format `<SCOPE>_<DOMAIN>` with uppercase
+names:
+
+```ts
+// spacetimedb/src/domains/orders/constants.ts
+export const STREAM_TYPES_ORDER = {
+  Order: 'Order',
+} as const;
+
+export const EVENT_TYPES_ORDER = {
+  Placed: 'OrderPlaced',
+  Cancelled: 'OrderCancelled',
+} as const;
+
+export const TABLES_ORDER = {
+  state: 'orders_state',
+  summary: 'orders_summary',
+} as const;
+
+export const VIEWS_ORDER = {
+  stream: 'order_stream',
+  head: 'order_head',
+} as const;
+```
+
+Use these constants in schema definitions, `makeStreamView({ name })`, projection `handles`, client
+registries, `viewQuery`/`tableQuery`, and contract fixtures. Do not add them to the core package.
+
+Keep `constants.ts` free of server-only imports. If module and web are separate packages, place the
+file in a small shared package or generate it from one source so both sides use identical literals.
 
 ### 1.3 Schema, state cache, and repository
 
@@ -398,8 +435,16 @@ non-plain values.
 ### 2.1 Registry
 
 ```ts
+// web/src/domains/counter/constants.ts
+export const EVENT_TYPES_COUNTER = {
+  Incremented: 'Incremented',
+  Decremented: 'Decremented',
+  Reset: 'Reset',
+} as const;
+
 // web/src/domains/counter/registry.ts
 import { createEventRegistry, type EventDefinition } from 'stdb-es/client';
+import { EVENT_TYPES_COUNTER } from './constants.js';
 
 type CounterEvent =
   | { kind: 'Incremented'; by: number }
@@ -407,28 +452,68 @@ type CounterEvent =
   | { kind: 'Reset' };
 
 const definitions: Record<string, EventDefinition<CounterEvent, any>> = {
-  Incremented: {
+  [EVENT_TYPES_COUNTER.Incremented]: {
     encode: (event) => event,
     decode: (payload) => ({ kind: 'Incremented', by: payload.by }),
   },
-  Decremented: {
+  [EVENT_TYPES_COUNTER.Decremented]: {
     encode: (event) => event,
     decode: (payload) => ({ kind: 'Decremented', by: payload.by }),
   },
-  Reset: {
+  [EVENT_TYPES_COUNTER.Reset]: {
     encode: (event) => event,
     decode: () => ({ kind: 'Reset' }),
   },
 };
 
 export const counterRegistry = createEventRegistry<CounterEvent>({
-  typeOf: (event) => event.kind,
+  typeOf: (event) => EVENT_TYPES_COUNTER[event.kind],
   events: definitions,
 });
 ```
 
-`upgrade(payload)` runs before `decode`, so old stored rows can be adapted to the current payload
-shape without rewriting the log.
+#### Identity `encode` vs an explicit payload
+
+`encode` produces the JSON value that becomes `es_event.data`. Use it deliberately:
+
+| Situation | Use | Why |
+| --- | --- | --- |
+| The domain event is already a plain JSON-safe object and its shape is the persisted contract | `encode: (event) => event` | No transformation needed; the event type string already records `kind` |
+| The domain type has `bigint`, `Date`, `Map`, class instances, or UI-only fields | explicit `encode` | Convert to a stable JSON shape and drop fields that are not part of the event |
+| You want the stored payload to stay stable while TypeScript types change | explicit `encode` | The persisted shape is an API, not a mirror of your internal model |
+| Old rows have a different shape | explicit `encode` plus `upgrade` | `upgrade` adapts old payloads before `decode` runs |
+
+Example of a justified explicit codec:
+
+```ts
+type PaymentEvent = { kind: 'MoneyCaptured'; amount: bigint; currency: string };
+
+const paymentRegistry = createEventRegistry<PaymentEvent>({
+  typeOf: (event) => EVENT_TYPES_PAYMENT.Captured,
+  events: {
+    [EVENT_TYPES_PAYMENT.Captured]: {
+      // bigint cannot be JSON.stringify'd directly.
+      encode: (event) => ({ amount: event.amount.toString(), currency: event.currency }),
+      decode: (payload) => ({
+        kind: 'MoneyCaptured',
+        amount: BigInt(payload.amount),
+        currency: payload.currency,
+      }),
+      // Old rows that stored `amount` as a number are upgraded on read.
+      upgrade: (payload: any) =>
+        typeof payload.amount === 'string' ? payload : { ...payload, amount: String(payload.amount) },
+    },
+  },
+});
+```
+
+`decode` must invert the current `encode` shape. `upgrade` runs first and exists only for historical
+rows. Once deployed, the output of `encode` is historical data: change it only with a new event type
+or an `upgrade`.
+
+`encode` is used by `encodeEvents`, `store.encode`, and `store.append`. It is **not** used on the read
+path (`upgrade` and `decode` are), and it is separate from the server-side `RepositoryOptions.encode`
+used when a module command calls `repository.save(...)`.
 
 ### 2.2 Append client
 
@@ -530,6 +615,70 @@ viewQuery('order_stream', ["O'Brien"]); // strings are escaped by viewQuery
 
 `viewQuery(name, args)` emits `SELECT * FROM name(args...)`, escaping strings and formatting
 bigints/booleans/nulls. Identifiers are validated; they are not escaped as values.
+
+### 2.6 Stream IDs
+
+The shared `streamId(prefix, key)` helper from `stdb-es` builds ids of the form `<prefix>-<key>`:
+
+```ts
+import { NO_STREAM, streamId } from 'stdb-es';
+import { STREAM_TYPES_ORDER } from './constants.js';
+
+const id = streamId('order', '42'); // 'order-42'
+const createId = streamId('order', crypto.randomUUID());
+
+await store.append(createId, STREAM_TYPES_ORDER.Order, [{ kind: 'Placed' }], {
+  expectedVersion: NO_STREAM,
+});
+```
+
+The helper:
+
+- requires a prefix starting with a letter and containing only letters, digits, or underscores, so
+  the `-` separator is unambiguous;
+- accepts string, non-negative integer, or non-negative bigint keys;
+- allows letters, digits, `_`, `.`, `:`, and `-` in string keys — UUIDs, hex identities, and dotted
+  business keys all work;
+- rejects spaces, quotes, semicolons, slashes, and other unsafe characters;
+- enforces the same 256-character limit as `appendToStream`;
+- throws an `Error` whose code is `ES_INVALID_BATCH`.
+
+It is **formatting and validation only**. It does not decide ownership or generate a business id for
+you.
+
+#### Who generates the stream id?
+
+| Approach | Use when | Consequence |
+| --- | --- | --- |
+| **Frontend** | Create flows where the client knows the business id or wants an idempotent retry | Use `expectedVersion: NO_STREAM`; the module must still validate and authorize the id |
+| **Module** | The id comes from `ctx.sender`, a server-side sequence, or other trusted domain rules | The client cannot know the id before the append; it must discover it through a view because reducers return `void` |
+| **Hybrid (recommended default)** | The client supplies a stable command/correlation id and the module derives or validates the stream id | Avoids client-chosen privileged ids while keeping retry correlation simple |
+
+Frontend-generated example above is appropriate for a public "create order" flow. A module-derived
+example looks like this:
+
+```ts
+// spacetimedb/src/domains/orders/reducers.ts
+import { streamId } from 'stdb-es';
+import { t } from 'spacetimedb/server';
+import { orderRepository, spacetimedb, type OrderEvent } from '../../index.js';
+import { STREAM_TYPES_ORDER } from './constants.js';
+
+export const placeOrder = spacetimedb.reducer(
+  { commandId: t.string() },
+  (ctx, { commandId }) => {
+    const id = streamId('order', commandId);
+    // Check ownership/authorization for `id` here before saving.
+    const aggregate = orderRepository.loadOrCreate(ctx, id);
+    const events: OrderEvent[] = [{ kind: 'Placed', orderId: id }];
+    orderRepository.save(ctx, aggregate, events, { expectedVersion: aggregate.version });
+  },
+);
+```
+
+Use `streamId` on both sides only with the same prefix. Event ids are a separate concern: client
+appends get ids from `crypto.randomUUID()` (or an injected generator), while `Repository.save` uses
+`ctx.newUuidV7()`.
 
 ---
 
@@ -765,15 +914,18 @@ web/src/
   generated/
   domains/
     counter/
+      constants.ts       # EVENT_TYPES_COUNTER, TABLES_COUNTER, VIEWS_COUNTER
       api.ts             # makeCounterStore + registry
       registry.ts
       CounterPanel.tsx
       counter.test.ts     # client unit test
     orders/
+      constants.ts       # same literals as the module domain constants
       api.ts
       registry.ts
       OrderList.tsx
     inventory/
+      constants.ts
       api.ts
       registry.ts
       StockPanel.tsx
@@ -781,9 +933,13 @@ web/src/
     ui/
 ```
 
-Each domain owns its registry, api wrapper, hooks, and components. Share only the provider, design
-system, and generated client. A multi-domain screen composes domain panels; it does not import one
-domain's event union into another.
+Each domain owns its constants, registry, api wrapper, hooks, and components. Share only the
+provider, design system, and generated client. A multi-domain screen composes domain panels; it does
+not import one domain's event union into another.
+
+Frontend `constants.ts` files mirror the module domain constants using the `<SCOPE>_<DOMAIN>` naming
+format. Keep them free of server imports. If module and web are separate packages, generate them from
+one source so the literals cannot drift.
 
 ### 4.4 A minimal counter panel
 

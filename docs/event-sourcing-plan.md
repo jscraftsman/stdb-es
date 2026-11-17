@@ -66,7 +66,7 @@ change the design, so they are recorded here rather than quietly edited.
 | **R1** | **Core package unit tests** | Every public export in `.`, `./server`, and `./client` has direct coverage; all ten workshop modules have a named test; the contract suite is dogfooded against the counter fixture; `npm test` is green with no live server. |
 | **R2** | **Consumer unit-test tools** | `stdb-es/testing` gives a consumer everything needed to test *their* module and client without a server: harness wrapper, wire fixtures, deterministic event ids, append-error assertions, contract suite, and a fake `append` for client-side tests. No network, no Node built-ins, runner-agnostic except for the optional `vitest` peer used by the contract suite. |
 | **R3** | **Consumer integration-test tools** | A Node-only entry, `stdb-es/testing/integration`, that publishes a module to a disposable database, calls reducers, runs owner and anonymous SQL, connects clients, waits for subscription convergence, and tears down. Works against `spacetime start` locally and a remote server, with no hard dependency on `vitest`. |
-| **R4** | **Package Usage Guide** | `docs/usage-guide.md` with four parts — module, client, testing, frontend. It explains domain-separated module/client layouts, retries, time travel, cache recovery, authorization, and all three consumer test layers. |
+| **R4** | **Package Usage Guide** | `docs/usage-guide.md` with four parts — module, client, testing, frontend. It explains domain-separated module/client layouts, app-owned constants (`<SCOPE>_<DOMAIN>`), identity vs explicit `encode`, shared `streamId` ownership rules, retries, time travel, cache recovery, authorization, and all three consumer test layers. |
 | **R5** | **CI gate for the above** | CI runs library and example typechecks, the offline unit suite, a disposable-server publish smoke test, and — once R3 lands — the consumer integration suite. A failure in any layer blocks merge. |
 | **R6** | **API reference** | `docs/API.md` documents every export from `.`, `./server`, `./client`, and `./testing` with its purpose, inputs/payload, and output/guarantees. Planned APIs are listed separately and never presented as shipped. |
 | **R7** | **README glossary** | `README.md` defines the consumer-facing terms used by the API and guides: stream, event envelope, version, expected version, position, state cache, version guard, projection, view, upcast, domain, cross-aggregate, and the other terms used by the consumer API. |
@@ -157,6 +157,7 @@ shows the additive case is safe; it is not part of the v1 API.
 stdb-es/
   package.json            # exports ".", "./server", "./client", "./testing", "./testing/integration"
   src/
+    stream-id.ts          # shared streamId(prefix, key) formatter/validator
     server/
       tables.ts           # es_stream, es_event, es_head (+ optional typed payload factory)
       errors.ts           # stable ES_* error codes
@@ -781,7 +782,16 @@ The package enforces shape and behavior, not table definitions:
 
 ## 13. Client SDK
 
-Shipped surface:
+Shared surface (from `.`, usable in module and client code):
+
+```ts
+streamId(prefix, key);  // '<prefix>-<key>'; validates shape and the 256-character limit
+```
+
+App-owned constants (`STREAM_TYPES_ORDER`, `EVENT_TYPES_ORDER`, `TABLES_ORDER`, `VIEWS_ORDER`) stay
+in each domain's `constants.ts`, not in the core package.
+
+Client surface:
 
 ```ts
 createEventRegistry({ typeOf, events });          // encode/decode/upgrade per event type
@@ -902,7 +912,7 @@ gate. Before any release, `npm pack` must install into a fresh workspace app.
 | M2 | `readStream`, `getStreamState`, `aggregateStream`, time travel, view factories | 05–06 green; SQL time-travel recipe works | done |
 | M3 | Aggregate, Repository, state cache + version guard, registry codec | 07–08 green; cache parity test green | done |
 | M4 | Inline projections + `rebuildBatch` + view factories + contract tests + **core unit-test floor** | 09 green; drift + smoke green; every public export covered offline | done |
-| M5 | Client SDK completion (subscription helper), npm metadata, CI gate | subscription helper tested; CI runs build + typecheck + unit + smoke; `npm pack` installs into a fresh app | in progress |
+| M5 | Shared `streamId` helper, client SDK completion (subscription helper), npm metadata, CI gate | `streamId` shape/limit/error tests green; subscription helper tested; CI runs build + typecheck + unit + smoke; `npm pack` installs into a fresh app | in progress |
 | M6 | **Consumer unit-test kit** (`stdb-es/testing`) | fake append, id helpers, and failure assertions shipped; a one-import, ~10-line consumer test needs no server | planned |
 | M7 | **Consumer integration-test kit** (`stdb-es/testing/integration`) | one call creates, publishes, and tears down a disposable database; concurrency, subscription, and anonymous-view cases green locally and remotely | planned |
 | M8 | **Developer documentation**: `docs/usage-guide.md`, `docs/API.md`, README glossary | all four guide parts present; every shipped export documented with inputs/outputs; README glossary links to both documents | documentation done |
@@ -961,6 +971,7 @@ here so they can be polished before any code is written.
 | Inline projections stall all writes | Transactions serialize; keep handlers small, move heavy ones to the pump (v1.1). |
 | Reducers return nothing | Client observes the new version via subscription/view. |
 | Subscription args are literals | Helpers validate and escape; use table queries for dynamic filters on materialized models. |
+| Stream id ownership | `streamId(prefix, key)` only formats/validates. Client-generated ids need module validation; module-generated ids require a view for discovery because reducers return void. Hybrid command ids are the recommended default. |
 | Event table growth | Minimal indexes, tiered storage, never delete history; archival is an app decision. |
 | Determinism | No clock/RNG/network. `ctx.timestamp`, `ctx.sender`, `ctx.random` only. |
 | Library bundle size | Server entry depends only on `spacetimedb/server`; helpers tree-shakeable. |

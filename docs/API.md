@@ -11,7 +11,7 @@ available yet.
 
 | Import | Intended environment | Contents |
 | --- | --- | --- |
-| `stdb-es` | module or client | Stable error codes, error helpers, protocol types and constants |
+| `stdb-es` | module or client | Stable error codes, error helpers, the `streamId` helper, protocol types and constants |
 | `stdb-es/server` | SpacetimeDB module only | Tables, append/read, aggregates, repositories, projections, views, doctor |
 | `stdb-es/client` | browser or Node client | Registry, encoding, append client, row helpers, subscription query helpers |
 | `stdb-es/testing` | Vitest tests | Harness shim, fixtures, contract suite |
@@ -58,7 +58,27 @@ the human-readable detail.
 
 `EsErrorCode` is the union of all values in `ES_ERROR`.
 
-### 1.3 Protocol constants
+### 1.3 Stream id helper
+
+| Symbol | Purpose | Inputs | Output / throws |
+| --- | --- | --- | --- |
+| `streamId(prefix, key)` | Builds a stable, validated stream id | `prefix: string`; `key: string \| number \| bigint` | `<prefix>-<key>`, for example `order-42`. Throws an `Error` with code `ES_INVALID_BATCH` when validation fails. |
+| `StreamIdKey` | Accepted key type | — | `string \| number \| bigint` |
+
+Validation rules:
+
+- `prefix` must start with a letter and contain only letters, digits, or underscores. This keeps the
+  `-` separator unambiguous.
+- A string `key` must contain only letters, digits, underscores, dots, colons, or hyphens. This
+  supports UUIDs, hex identities, and dotted/colon-separated business keys while rejecting spaces,
+  quotes, semicolons, and slashes.
+- A numeric `key` must be a non-negative safe integer; a bigint `key` must be non-negative.
+- The resulting id must be at most 256 characters, matching `appendToStream`.
+
+`streamId` is a formatting helper only. It does not decide who may create a stream and does not check
+ownership. Import it from `stdb-es` in both module and client code.
+
+### 1.4 Protocol constants
 
 | Symbol | Value | Purpose |
 | --- | --- | --- |
@@ -69,7 +89,7 @@ the human-readable detail.
 Versions are 1-based, so negative values are safe sentinels. Any other negative value is
 `ES_INVALID_BATCH`.
 
-### 1.4 Protocol types
+### 1.5 Protocol types
 
 These are re-exported by `stdb-es/server`.
 
