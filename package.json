@@ -1,0 +1,73 @@
+{
+  "name": "stdb-es",
+  "version": "0.0.0",
+  "description": "Event sourcing for SpacetimeDB: event streams, optimistic concurrency, aggregates, state caches, and live read models.",
+  "license": "MIT",
+  "author": "gervel@jscraftsman.com",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "spacetimedb",
+    "spacetime",
+    "event-sourcing",
+    "event-store",
+    "cqrs",
+    "typescript"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "workspaces": [
+    "examples/*/spacetimedb"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "default": "./dist/server/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/client/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "example:build": "npm run build && npm run example:typecheck && spacetime build -p examples/counter/spacetimedb",
+    "example:typecheck": "tsc -p examples/counter/spacetimedb/tsconfig.json",
+    "example:publish": "npm run build && npm run example:typecheck && spacetime publish stdb-es-counter -s local -p examples/counter/spacetimedb",
+    "example:publish:fresh": "npm run build && npm run example:typecheck && spacetime publish stdb-es-counter -s local -p examples/counter/spacetimedb --delete-data=always -y",
+    "smoke": "npm run example:publish:fresh && node scripts/smoke-example.mjs",
+    "prepublishOnly": "npm run clean && npm run build && npm test"
+  },
+  "peerDependencies": {
+    "spacetimedb": ">=2.15.0 <3",
+    "vitest": ">=3 <4"
+  },
+  "peerDependenciesMeta": {
+    "vitest": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "spacetimedb": "2.15.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.7"
+  }
+}
