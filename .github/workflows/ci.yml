@@ -50,14 +50,21 @@ jobs:
             mv "$bin/spacetimedb-cli" "$bin/spacetime"
           fi
 
-          if [ ! -f "$bin/spacetime-standalone" ]; then
-            standalone="$(find "$bin" -maxdepth 2 -type f -name 'spacetime-standalone' -print -quit)"
-            if [ -n "$standalone" ] && [ "$standalone" != "$bin/spacetime-standalone" ]; then
-              mv "$standalone" "$bin/spacetime-standalone"
+          # v2.15.0's CLI resolves its sibling server binary as
+          # spacetimedb-standalone. Some artifacts use the shorter name, so
+          # normalize either spelling to the name the CLI actually looks for.
+          if [ ! -f "$bin/spacetimedb-standalone" ]; then
+            standalone="$(find "$bin" -maxdepth 2 -type f \( -name 'spacetimedb-standalone' -o -name 'spacetime-standalone' \) -print -quit)"
+            if [ -n "$standalone" ] && [ "$standalone" != "$bin/spacetimedb-standalone" ]; then
+              mv "$standalone" "$bin/spacetimedb-standalone"
             fi
           fi
 
-          for file in "$bin/spacetime" "$bin/spacetime-standalone"; do
+          if [ -f "$bin/spacetimedb-standalone" ] && [ ! -e "$bin/spacetime-standalone" ]; then
+            ln -s spacetimedb-standalone "$bin/spacetime-standalone"
+          fi
+
+          for file in "$bin/spacetime" "$bin/spacetimedb-standalone"; do
             if [ -f "$file" ]; then
               chmod +x "$file"
             fi
@@ -67,8 +74,8 @@ jobs:
             echo "::error::spacetime CLI binary not found after extracting v${SPACETIME_VERSION}"
             exit 1
           fi
-          if [ ! -x "$bin/spacetime-standalone" ]; then
-            echo "::error::spacetime-standalone binary not found after extracting v${SPACETIME_VERSION}"
+          if [ ! -x "$bin/spacetimedb-standalone" ]; then
+            echo "::error::spacetimedb-standalone server binary not found after extracting v${SPACETIME_VERSION}"
             exit 1
           fi
 
