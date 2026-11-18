@@ -32,11 +32,14 @@ That command:
 2. builds the module in `spacetimedb/`;
 3. generates TypeScript client bindings into `web/src/generated`;
 4. typechecks both subprojects;
-5. publishes fresh to `stdb-es-counter-with-frontend` on the local server;
+5. publishes to `stdb-es-counter-with-frontend` on the local server, preserving existing data;
 6. starts Vite on `http://127.0.0.1:5173`.
 
-The publish is destructive for that scratch database (`--delete-data=always`). After the first run,
-you can start only the web app with:
+`npm run example:set:counter:publish` performs the same build/generate/typecheck/publish steps without
+starting Vite. Use `npm run example:set:counter:publish-clean` only when you deliberately want to
+reset the scratch database with `--delete-data=always`.
+
+After the first publish, you can start only the web app with:
 
 ```bash
 npm --prefix examples/sets/counter-with-frontend/web run dev

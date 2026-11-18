@@ -14,8 +14,8 @@ a second database, a message broker, or a separate read-model store.
 
 ## Documentation
 
-- [Package Usage Guide](docs/usage-guide.md) — module code, client code, testing, and a simple React
-  frontend, including domain-separated project layouts.
+- [Package Usage Guide](docs/usage-guide.md) — a from-scratch full-stack project, module code, client
+  code, testing, and a simple React frontend, including domain-separated layouts.
 - [API reference](docs/API.md) — every shipped export, its inputs, and its outputs.
 - [SQL recipes](docs/sql-recipes.md) — owner-only inspection and repair queries.
 - [Counter with frontend](examples/sets/counter-with-frontend/README.md) — runnable full-stack set.
@@ -638,8 +638,11 @@ npm run smoke         # publish the example and run the live smoke test
 To run the full-stack set (React + module) against the already-running local server:
 
 ```bash
-npm run example:set:counter:start   # publishes fresh, generates bindings, starts Vite on :5173
+npm run example:set:counter:start   # publishes, generates bindings, starts Vite on :5173
 ```
+
+The full-stack publish preserves existing data. Use `npm run example:set:counter:publish-clean` only
+for a deliberate scratch reset with `--delete-data=always`.
 
 The smoke and full-stack commands assume a local server on `127.0.0.1:3000`:
 

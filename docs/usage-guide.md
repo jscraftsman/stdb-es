@@ -18,6 +18,830 @@ For the complete signature of every export, see [API.md](API.md). For owner-only
 > Never import `stdb-es/server` into browser code. Never import Node-only test tooling into a module
 > bundle. The client entry is browser-safe; the planned integration kit has its own Node-only entry.
 
+New to the package? Start with **Part 0** below for a complete from-scratch project. Parts 1–4 then
+explain the individual pieces in more depth.
+
+---
+
+## Part 0 — New project workflow: full-stack counter from scratch
+
+This section is a standalone walkthrough. It assumes `stdb-es` is already published on npm, so the
+project installs it like any other dependency — there are no `file:` links and no checkout of this
+repository. The result is the same shape as
+[`examples/sets/counter-with-frontend`](../examples/sets/counter-with-frontend/README.md): one
+SpacetimeDB TypeScript module, one generated client, and one small React screen.
+
+### 0.1 Prerequisites
+
+```bash
+node --version          # 20 or newer
+spacetime --version     # 2.15.x
+```
+
+Start a local SpacetimeDB server separately, and make sure the `local` nickname exists:
+
+```bash
+spacetime server ping local
+spacetime server add local --url http://localhost:3000   # only if the nickname is missing
+```
+
+The browser connects over WebSocket to `ws://localhost:3000`; the CLI uses HTTP on port `3000`.
+
+### 0.2 Scaffold the project
+
+```bash
+mkdir my-counter
+cd my-counter
+
+spacetime init --lang typescript --server-only --non-interactive spacetimedb
+npm create vite@latest web -- --template react-ts
+```
+
+Replace the generated package files with the following so the two subprojects share one root
+install. The `publish` script preserves existing data; use `publish:reset` only when you deliberately
+want a scratch reset.
+
+```json
+// package.json
+{
+  "name": "my-counter",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "workspaces": ["spacetimedb", "web"],
+  "scripts": {
+    "build:module": "spacetime build -p spacetimedb",
+    "generate": "spacetime generate --lang typescript --module-path spacetimedb --out-dir web/src/generated",
+    "typecheck": "tsc -p spacetimedb/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
+    "publish": "npm run build:module && npm run generate && npm run typecheck && spacetime publish my-counter -s local -p spacetimedb",
+    "publish:reset": "npm run build:module && npm run generate && npm run typecheck && spacetime publish my-counter -s local -p spacetimedb --delete-data=always -y",
+    "dev": "npm run publish && npm --prefix web run dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
+```
+
+```json
+// spacetimedb/package.json
+{
+  "name": "my-counter-module",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "stdb-es": "latest"
+  },
+  "devDependencies": {
+    "spacetimedb": "2.15.0",
+    "typescript": "^5.7.0"
+  }
+}
+```
+
+```json
+// web/package.json
+{
+  "name": "my-counter-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "spacetimedb": "2.15.0",
+    "stdb-es": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.0",
+    "vite": "^7.0.0"
+  }
+}
+```
+
+`latest` keeps this walkthrough focused on the published npm package. Equivalently, run
+`npm install stdb-es@latest` inside `spacetimedb/` and again inside `web/`; the root `npm install`
+below performs both through npm workspaces. Pin the exact version npm resolves in an application you
+intend to reproduce. `stdb-es` declares `spacetimedb >=2.15 <3` as a peer; both subprojects install
+`2.15.0` explicitly because generated bindings are version-specific.
+
+Add the config files:
+
+```json
+// spacetime.json
+{
+  "module-path": "./spacetimedb",
+  "server": "local"
+}
+```
+
+```json
+// spacetimedb/tsconfig.json
+{
+  "compilerOptions": {
+    "strict": true,
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "target": "ESNext",
+    "lib": ["ES2021", "dom"],
+    "module": "ESNext",
+    "isolatedModules": true,
+    "noEmit": true
+  },
+  "include": ["./**/*"]
+}
+```
+
+```json
+// web/tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "types": ["vite/client"]
+  },
+  "include": ["src", "vite.config.ts"]
+}
+```
+
+```ts
+// web/vite.config.ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    host: '127.0.0.1',
+    port: 5173,
+  },
+});
+```
+
+```html
+<!-- web/index.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My counter</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+```
+
+Install everything from the project root:
+
+```bash
+npm install
+npm ls stdb-es spacetimedb
+```
+
+The final layout is:
+
+```text
+my-counter/
+  package.json
+  spacetime.json
+  spacetimedb/
+    package.json
+    tsconfig.json
+    src/
+      index.ts
+      schema.ts
+      domains/counter/
+        constants.ts
+        events.ts
+        aggregate.ts
+        reducers.ts
+        views.ts
+  web/
+    package.json
+    tsconfig.json
+    vite.config.ts
+    index.html
+    src/
+      main.tsx
+      App.tsx
+      config.ts
+      styles.css
+      generated/                 # produced by `npm run generate`
+      domains/counter/
+        constants.ts
+        ids.ts
+        registry.ts
+        api.ts
+        CounterPanel.tsx
+```
+
+### 0.3 Module: app-owned constants and events
+
+All counter literals live in the app, never in `stdb-es`. The module and web copies mirror each other;
+this simple project keeps them in two files rather than adding a shared package.
+
+```ts
+// spacetimedb/src/domains/counter/constants.ts
+/** App-owned literals for the counter domain. Mirrored in `web/src/domains/counter`. */
+export const STREAM_TYPES_COUNTER = {
+  Counter: 'Counter',
+} as const;
+
+export const STREAM_PREFIXES_COUNTER = {
+  counter: 'counter',
+} as const;
+
+export const EVENT_TYPES_COUNTER = {
+  Incremented: 'Incremented',
+  Decremented: 'Decremented',
+  Reset: 'Reset',
+} as const;
+
+export const TABLES_COUNTER = {
+  state: 'counter_state',
+  summary: 'counter_summary',
+} as const;
+```
+
+```ts
+// spacetimedb/src/domains/counter/events.ts
+import { EVENT_TYPES_COUNTER } from './constants.js';
+
+/** Stored payloads; the `kind` literal is also the persisted event-type string. */
+export type CounterEvent =
+  | { kind: typeof EVENT_TYPES_COUNTER.Incremented; by: number }
+  | { kind: typeof EVENT_TYPES_COUNTER.Decremented; by: number }
+  | { kind: typeof EVENT_TYPES_COUNTER.Reset };
+```
+
+### 0.4 Module: schema, fold, append reducer, and view
+
+`esTables` is private library infrastructure. `counter_state` is the app's private state cache, and
+`counter_summary` is the public materialized read model the UI subscribes to.
+
+```ts
+// spacetimedb/src/schema.ts
+import { schema, t, table } from 'spacetimedb/server';
+import { esTables, type CtxOf } from 'stdb-es/server';
+import { TABLES_COUNTER } from './domains/counter/constants.js';
+
+/** Private, app-owned state cache. `version` is the guard used by replay-on-miss. */
+export const counterState = table(
+  { name: TABLES_COUNTER.state },
+  {
+    streamId: t.string().primaryKey(),
+    version: t.u32(),
+    value: t.i64(),
+  },
+);
+
+export const spacetimedb = schema({ ...esTables, counterState });
+export type Context = CtxOf<typeof spacetimedb>;
+
+export default spacetimedb;
+```
+
+```ts
+// spacetimedb/src/domains/counter/aggregate.ts
+import { readStream } from 'stdb-es/server';
+import type { Context } from '../../schema.js';
+import { EVENT_TYPES_COUNTER } from './constants.js';
+import type { CounterEvent } from './events.js';
+
+/** The single fold used by both incremental updates and full replay. */
+export function evolve(value: bigint, event: CounterEvent): bigint {
+  switch (event.kind) {
+    case EVENT_TYPES_COUNTER.Incremented:
+      return value + BigInt(event.by);
+    case EVENT_TYPES_COUNTER.Decremented:
+      return value - BigInt(event.by);
+    case EVENT_TYPES_COUNTER.Reset:
+      return 0n;
+  }
+}
+
+/** A missing or stale cache row must be rebuilt from the log, never read as zero. */
+export function replayValue(ctx: Context, streamId: string): bigint {
+  let value = 0n;
+  for (const row of readStream(ctx, streamId)) {
+    value = evolve(value, JSON.parse(row.data) as CounterEvent);
+  }
+  return value;
+}
+```
+
+```ts
+// spacetimedb/src/domains/counter/reducers.ts
+import { makeAppendReducer } from 'stdb-es/server';
+import { spacetimedb } from '../../schema.js';
+import { evolve, replayValue } from './aggregate.js';
+import { EVENT_TYPES_COUNTER } from './constants.js';
+import type { CounterEvent } from './events.js';
+
+/** Generic client-facing write path; the client supplies encoded events and ids. */
+export const appendEvents = makeAppendReducer(spacetimedb, {
+  eventTypes: [
+    EVENT_TYPES_COUNTER.Incremented,
+    EVENT_TYPES_COUNTER.Decremented,
+    EVENT_TYPES_COUNTER.Reset,
+  ],
+
+  onAppended: (ctx, result) => {
+    const streamId = result.rows[0]?.streamId;
+    if (!streamId) return;
+
+    const current = ctx.db.counterState.streamId.find(streamId);
+    if (!current) {
+      // `onAppended` sees the new rows, so this replay already includes them.
+      const value = replayValue(ctx, streamId);
+      ctx.db.counterState.insert({ streamId, version: result.version, value });
+      return;
+    }
+
+    let value = current.value;
+    for (const row of result.rows) {
+      value = evolve(value, JSON.parse(row.data) as CounterEvent);
+    }
+    ctx.db.counterState.streamId.update({ streamId, version: result.version, value });
+  },
+});
+```
+
+The hook runs in the same transaction as the append, and deduplicated retries skip it. A missing
+cache row triggers a replay instead of assuming a zero counter.
+
+```ts
+// spacetimedb/src/domains/counter/views.ts
+import { t } from 'spacetimedb/server';
+import { counterState, spacetimedb } from '../../schema.js';
+import { TABLES_COUNTER } from './constants.js';
+
+/** World-readable, materialized read model for the simple React UI. */
+export const counterSummary = spacetimedb.anonymousView(
+  { name: TABLES_COUNTER.summary, public: true },
+  t.array(counterState.rowType),
+  (ctx) => [...ctx.db.counterState.iter()],
+);
+```
+
+A module entry point may export only SpacetimeDB exports. Re-exporting tables, types, or other
+non-export values makes schema inspection fail.
+
+```ts
+// spacetimedb/src/index.ts
+export { default } from './schema.js';
+export { appendEvents } from './domains/counter/reducers.js';
+export { counterSummary } from './domains/counter/views.js';
+```
+
+### 0.5 Build, generate bindings, and publish
+
+Run these from the project root:
+
+```bash
+npm install
+npm run typecheck
+npm run build:module
+npm run generate
+npm run publish
+```
+
+Or use the one-command script:
+
+```bash
+npm run dev       # publish, then start Vite on http://127.0.0.1:5173
+```
+
+What each step does:
+
+| Command | Effect |
+| --- | --- |
+| `npm run build:module` | Bundles the TypeScript module for SpacetimeDB. |
+| `npm run generate` | Writes client bindings into `web/src/generated`. Never edit that folder. |
+| `npm run typecheck` | Type-checks module and web code, including the generated bindings. |
+| `npm run publish` | Publishes/updates `my-counter` on `local` **without** deleting data. |
+| `npm run publish:reset` | Destructive scratch reset using `--delete-data=always -y`. |
+
+`spacetime build` may print `tsc not found in node_modules` because npm hoists TypeScript to the
+root workspace. The bundle still succeeds; `npm run typecheck` is the explicit type check. Regenerate
+bindings after changing any schema, reducer, or view.
+
+### 0.6 Web: config, constants, id, registry, and adapter
+
+```ts
+// web/src/config.ts
+export const SPACETIMEDB_URI = import.meta.env.VITE_STDB_URI ?? 'ws://localhost:3000';
+export const DATABASE_NAME =
+  import.meta.env.VITE_STDB_DATABASE ?? 'my-counter';
+
+const TOKEN_KEY = `${SPACETIMEDB_URI}/${DATABASE_NAME}/auth_token`;
+
+export function readToken(): string | undefined {
+  return localStorage.getItem(TOKEN_KEY) ?? undefined;
+}
+
+export function writeToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+```
+
+```ts
+// web/src/domains/counter/constants.ts
+/** Mirrors `spacetimedb/src/domains/counter/constants.ts`. No server imports. */
+export const STREAM_TYPES_COUNTER = {
+  Counter: 'Counter',
+} as const;
+
+export const STREAM_PREFIXES_COUNTER = {
+  counter: 'counter',
+} as const;
+
+export const EVENT_TYPES_COUNTER = {
+  Incremented: 'Incremented',
+  Decremented: 'Decremented',
+  Reset: 'Reset',
+} as const;
+
+export const TABLES_COUNTER = {
+  state: 'counter_state',
+  summary: 'counter_summary',
+} as const;
+```
+
+```ts
+// web/src/domains/counter/ids.ts
+import { streamId } from 'stdb-es';
+import { STREAM_PREFIXES_COUNTER } from './constants.js';
+
+/** The single public counter used by this UI. */
+export const COUNTER_STREAM_ID = streamId(STREAM_PREFIXES_COUNTER.counter, '1');
+```
+
+`streamId` only formats and validates. It does not grant ownership. This demo deliberately uses one
+public counter; a real multi-user app would derive or authorize the id in the module.
+
+```ts
+// web/src/domains/counter/registry.ts
+import { createEventRegistry, type EventDefinition } from 'stdb-es/client';
+import { EVENT_TYPES_COUNTER } from './constants.js';
+
+export type CounterEvent =
+  | { kind: typeof EVENT_TYPES_COUNTER.Incremented; by: number }
+  | { kind: typeof EVENT_TYPES_COUNTER.Decremented; by: number }
+  | { kind: typeof EVENT_TYPES_COUNTER.Reset };
+
+/** Identity codec: the domain object is already the persisted JSON payload. */
+const definitions: Record<string, EventDefinition<CounterEvent, any>> = {
+  [EVENT_TYPES_COUNTER.Incremented]: {
+    encode: (event) => event,
+    decode: (payload) => ({ kind: EVENT_TYPES_COUNTER.Incremented, by: payload.by }),
+  },
+  [EVENT_TYPES_COUNTER.Decremented]: {
+    encode: (event) => event,
+    decode: (payload) => ({ kind: EVENT_TYPES_COUNTER.Decremented, by: payload.by }),
+  },
+  [EVENT_TYPES_COUNTER.Reset]: {
+    encode: (event) => event,
+    decode: () => ({ kind: EVENT_TYPES_COUNTER.Reset }),
+  },
+};
+
+export const counterRegistry = createEventRegistry<CounterEvent>({
+  typeOf: (event) => EVENT_TYPES_COUNTER[event.kind],
+  events: definitions,
+});
+```
+
+The identity `encode` is intentional: these events are already plain JSON, and the stored `kind`
+matches the registry key. Use an explicit codec when a domain type contains `bigint`, `Date`, or
+UI-only fields, or when you need an `upgrade` for historical payloads.
+
+```ts
+// web/src/domains/counter/api.ts
+import { createEventStoreClient } from 'stdb-es/client';
+import type { AppendEventsParams } from '../../generated/types/reducers.js';
+import { counterRegistry } from './registry.js';
+
+type EncodedEvents = AppendEventsParams['events'];
+
+/** The typed `useReducer(reducers.appendEvents)` call. */
+export type AppendCall = (params: AppendEventsParams) => Promise<void>;
+
+export function makeCounterStore(callAppend: AppendCall) {
+  return createEventStoreClient({
+    registry: counterRegistry,
+    // The client library produces one args object, which matches generated reducers.
+    append: (args) =>
+      callAppend({
+        streamId: args.streamId,
+        streamType: args.streamType,
+        expectedVersion: args.expectedVersion,
+        events: args.events as EncodedEvents,
+        metadata: args.metadata ?? undefined,
+      }),
+  });
+}
+```
+
+Generated TypeScript reducers take **one params object**, not positional arguments. The
+`stdb-es/client` callback also receives one `AppendCallArgs` object; this adapter maps the two types
+without changing their semantics.
+
+### 0.7 Web: provider, screen, and panel
+
+```tsx
+// web/src/main.tsx
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { SpacetimeDBProvider } from 'spacetimedb/react';
+import App from './App.js';
+import { DATABASE_NAME, SPACETIMEDB_URI, readToken, writeToken } from './config.js';
+import { DbConnection } from './generated/index.js';
+import './styles.css';
+
+const connectionBuilder = DbConnection.builder()
+  .withUri(SPACETIMEDB_URI)
+  .withDatabaseName(DATABASE_NAME)
+  .withToken(readToken())
+  .withAutomaticReconnect()
+  .onConnect((_connection, _identity, token) => writeToken(token));
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <SpacetimeDBProvider connectionBuilder={connectionBuilder}>
+      <App />
+    </SpacetimeDBProvider>
+  </React.StrictMode>,
+);
+```
+
+```tsx
+// web/src/App.tsx
+import { useSpacetimeDB, useTable } from 'spacetimedb/react';
+import { tables } from './generated/index.js';
+import { CounterPanel } from './domains/counter/CounterPanel.js';
+import { TABLES_COUNTER } from './domains/counter/constants.js';
+
+export default function App() {
+  const { isActive } = useSpacetimeDB();
+  const [rows, ready] = useTable(tables.counterSummary);
+
+  return (
+    <main>
+      <header>
+        <h1>My counter</h1>
+        <p>
+          {isActive ? 'Connected' : 'Connecting…'} ·{' '}
+          {ready ? `${TABLES_COUNTER.summary} ready` : 'Waiting for the view'}
+        </p>
+      </header>
+      <CounterPanel rows={rows} ready={ready} />
+    </main>
+  );
+}
+```
+
+```tsx
+// web/src/domains/counter/CounterPanel.tsx
+import { useMemo, useState } from 'react';
+import { useReducer as useSpacetimeReducer } from 'spacetimedb/react';
+import { ES_ERROR, NO_STREAM, esErrorCode } from 'stdb-es';
+import { reducers } from '../../generated/index.js';
+import { makeCounterStore } from './api.js';
+import { EVENT_TYPES_COUNTER, STREAM_TYPES_COUNTER } from './constants.js';
+import { COUNTER_STREAM_ID } from './ids.js';
+import type { CounterEvent } from './registry.js';
+
+type CounterRow = { streamId: string; version: number; value: bigint };
+
+type Props = {
+  rows: readonly CounterRow[];
+  ready: boolean;
+};
+
+export function CounterPanel({ rows, ready }: Props) {
+  const callAppend = useSpacetimeReducer(reducers.appendEvents);
+  const store = useMemo(() => makeCounterStore(callAppend), [callAppend]);
+
+  const [by, setBy] = useState(1);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const row = rows.find((candidate) => candidate.streamId === COUNTER_STREAM_ID);
+  const version = row?.version ?? NO_STREAM;
+
+  async function append(events: CounterEvent[]) {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await store.append(COUNTER_STREAM_ID, STREAM_TYPES_COUNTER.Counter, events, {
+        expectedVersion: version,
+      });
+      setMessage('Committed. The view will refresh when the subscription applies.');
+    } catch (cause) {
+      setMessage(
+        esErrorCode(cause) === ES_ERROR.EXPECTED_VERSION_MISMATCH
+          ? 'Someone updated the counter first. The view will refresh.'
+          : 'Could not append the event.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="panel">
+      <h2>Counter</h2>
+      <p className="value" aria-live="polite">
+        {ready ? String(row?.value ?? 0n) : 'Loading…'}
+      </p>
+      <p className="meta">stream {COUNTER_STREAM_ID} · version {row?.version ?? 0}</p>
+
+      <label>
+        Amount
+        <input
+          type="number"
+          value={by}
+          onChange={(event) => setBy(Number(event.target.value))}
+        />
+      </label>
+
+      <div className="actions">
+        <button
+          disabled={busy}
+          onClick={() => append([{ kind: EVENT_TYPES_COUNTER.Incremented, by }])}
+        >
+          Increment
+        </button>
+        <button
+          disabled={busy}
+          onClick={() => append([{ kind: EVENT_TYPES_COUNTER.Decremented, by }])}
+        >
+          Decrement
+        </button>
+        <button disabled={busy} onClick={() => append([{ kind: EVENT_TYPES_COUNTER.Reset }])}>
+          Reset
+        </button>
+      </div>
+
+      {message ? <p role="status">{message}</p> : null}
+    </section>
+  );
+}
+```
+
+```css
+/* web/src/styles.css */
+:root {
+  font-family: system-ui, sans-serif;
+  color: #18212f;
+  background: #f5f7fa;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  max-width: 32rem;
+  margin: 4rem auto;
+  padding: 0 1rem;
+}
+
+header p {
+  color: #52606d;
+}
+
+.panel {
+  padding: 1.5rem;
+  border: 1px solid #d7dfe8;
+  border-radius: 12px;
+  background: white;
+}
+
+.value {
+  margin: 0;
+  font-size: 3rem;
+  font-weight: 700;
+}
+
+.meta {
+  margin-top: 0.25rem;
+  color: #52606d;
+  font-size: 0.875rem;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 1.25rem;
+}
+
+input {
+  padding: 0.5rem;
+  border: 1px solid #bcc6d0;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+button {
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  border-radius: 6px;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+  font: inherit;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+```
+
+The panel takes the expected version from the subscribed summary row. On the first append the row is
+absent, so `NO_STREAM` makes the append create-only. A failed version check is handled explicitly;
+the next subscription update supplies the correct version.
+
+### 0.8 Run and verify
+
+```bash
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`, wait for `Connected` and `counter_summary ready`, then use the three
+buttons. The value shown is the materialized `counter_state` row exposed by `counter_summary`, not a
+local React calculation.
+
+You can also inspect the read model directly:
+
+```bash
+spacetime sql my-counter 'SELECT * FROM counter_summary' -s local --format json
+```
+
+A successful append returns a row like:
+
+```json
+[["counter-1", 1, 5]]
+```
+
+The columns are `stream_id`, `version`, and `value`. `es_stream`, `es_event`, and `es_head` are
+private and are not available to the browser.
+
+If you need a clean scratch database:
+
+```bash
+npm run publish:reset
+```
+
+That command deletes all data in `my-counter`. The normal `npm run publish` does not.
+
+### 0.9 What this workflow establishes
+
+- `stdb-es` is consumed from npm by two independent workspace packages.
+- App-owned literals are mirrored in module and web `constants.ts` files; the core package exports
+  none of them.
+- The module owns the event log, the version-guarded state cache, the generic append reducer, and the
+  public read model.
+- The client encodes plain JSON events with stable ids, uses the view's version as the optimistic
+  concurrency token, and calls the generated reducer with one params object.
+- The React UI reads only the public view and observes commits through the subscription.
+
+For multi-domain apps, repeat the `domains/<name>` pattern on both sides and compose the panels under
+one provider. See [Part 1](#part-1--module-app-code) and [Part 4](#part-4--simple-react-frontend) for
+the deeper layout rules.
+
 ---
 
 ## Part 1 — Module app code
@@ -595,24 +1419,33 @@ used when a module command calls `repository.save(...)`.
 ```ts
 // web/src/domains/counter/api.ts
 import { createEventStoreClient } from 'stdb-es/client';
+import type { AppendEventsParams } from '../../generated/types/reducers.js';
 import { counterRegistry } from './registry.js';
-import type { DbConnection } from '../../generated/index.js';
 
-export function makeCounterStore(connection: DbConnection) {
+type EncodedEvents = AppendEventsParams['events'];
+
+/** The typed `useReducer(reducers.appendEvents)` call. */
+export type AppendCall = (params: AppendEventsParams) => Promise<void>;
+
+export function makeCounterStore(callAppend: AppendCall) {
   return createEventStoreClient({
     registry: counterRegistry,
-    // Adapt to the generated binding's shape. The callback itself takes one object.
+    // The client library produces one args object, which matches generated reducers.
     append: (args) =>
-      connection.reducers.appendEvents(
-        args.streamId,
-        args.streamType,
-        args.expectedVersion,
-        args.events,
-        args.metadata,
-      ),
+      callAppend({
+        streamId: args.streamId,
+        streamType: args.streamType,
+        expectedVersion: args.expectedVersion,
+        events: args.events as EncodedEvents,
+        metadata: args.metadata ?? undefined,
+      }),
   });
 }
 ```
+
+Generated TypeScript reducers take one params object, not positional arguments. `useReducer` exposes
+that same signature; the adapter only reconciles the generated `EncodedEvent` type with the client
+library's `EncodedEvent` type.
 
 The `append` callback receives:
 
@@ -1007,11 +1840,15 @@ React SDK:
 
 ```bash
 npm install stdb-es spacetimedb
-npx spacetime generate --lang ts --out-dir web/src/generated
+npx spacetime generate \
+  --lang typescript \
+  --module-path spacetimedb \
+  --out-dir web/src/generated
 ```
 
 The generated module exposes `DbConnection`, `tables`, and `reducers`. Keep it in one folder and
-never edit it by hand.
+never edit it by hand. For the complete setup and module that produces these bindings, see
+[Part 0](#part-0--new-project-workflow-full-stack-counter-from-scratch).
 
 ### 4.2 Provider
 
@@ -1080,6 +1917,7 @@ import { useReducer as useSpacetimeReducer, useSpacetimeDB, useTable } from 'spa
 import { ES_ERROR, esErrorCode, streamId } from 'stdb-es';
 import { createEventStoreClient, viewQuery } from 'stdb-es/client';
 import { reducers, tables } from '../../generated/index.js';
+import type { AppendEventsParams } from '../../generated/types/reducers.js';
 import { counterRegistry } from './registry.js';
 import {
   EVENT_TYPES_COUNTER,
@@ -1106,13 +1944,13 @@ export function CounterPanel() {
       createEventStoreClient({
         registry: counterRegistry,
         append: (args) =>
-          callAppend(
-            args.streamId,
-            args.streamType,
-            args.expectedVersion,
-            args.events,
-            args.metadata,
-          ),
+          callAppend({
+            streamId: args.streamId,
+            streamType: args.streamType,
+            expectedVersion: args.expectedVersion,
+            events: args.events as AppendEventsParams['events'],
+            metadata: args.metadata ?? undefined,
+          }),
       }),
     [callAppend],
   );
