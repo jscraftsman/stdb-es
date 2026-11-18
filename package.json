@@ -1,9 +1,17 @@
 {
   "name": "stdb-es",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Add event sourcing to your TypeScript SpacetimeDB app with append-only streams, safe retries, replayable state, and live read models.",
   "license": "MIT",
   "author": "gervel@jscraftsman.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jscraftsman/stdb-es.git"
+  },
+  "homepage": "https://github.com/jscraftsman/stdb-es#readme",
+  "bugs": {
+    "url": "https://github.com/jscraftsman/stdb-es/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "engines": {
@@ -19,6 +27,8 @@
   ],
   "files": [
     "dist",
+    "docs",
+    "examples/sets/counter-with-frontend/README.md",
     "README.md",
     "LICENSE"
   ],
@@ -63,7 +73,7 @@
     "example:set:counter:start": "npm run example:set:counter:publish && npm --prefix examples/sets/counter-with-frontend/web run dev",
     "smoke": "npm run example:publish:fresh && node scripts/smoke-example.mjs",
     "check:pack": "node scripts/pack-install-check.mjs",
-    "prepublishOnly": "npm run clean && npm run build && npm test"
+    "prepublishOnly": "npm run clean && npm run build && npm run typecheck && npm test && npm run check:pack"
   },
   "peerDependencies": {
     "spacetimedb": ">=2.15.0 <3",
@@ -73,6 +83,10 @@
     "vitest": {
       "optional": true
     }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -22,9 +22,13 @@ const temp = fs.mkdtempSync(path.join(tempRoot, 'stdb-es-pack-'));
 
 // `npm run` exports npm_config_allow_scripts into this process. Passing that
 // inherited value into the fresh install makes npm 11 reject the project-scoped
-// install, so drop it for child npm calls.
+// install, so drop it for child npm calls. `npm publish --dry-run` also exports
+// npm_config_dry_run; leaving it set would make `npm pack` report a tarball name
+// without writing the file, which breaks the install below.
 const npmEnv = { ...process.env };
 delete npmEnv.npm_config_allow_scripts;
+delete npmEnv.npm_config_dry_run;
+delete npmEnv['npm_config_dry-run'];
 
 function npmInvocation(args) {
   return npmExecPath

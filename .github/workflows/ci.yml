@@ -21,10 +21,10 @@ jobs:
 
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -33,13 +33,45 @@ jobs:
         run: |
           set -euo pipefail
           bin="$RUNNER_TEMP/spacetime/bin"
+          archive="$RUNNER_TEMP/spacetime-${SPACETIME_VERSION}.tar.gz"
           mkdir -p "$bin"
           curl -sSfL \
             "https://github.com/clockworklabs/SpacetimeDB/releases/download/v${SPACETIME_VERSION}/spacetime-x86_64-unknown-linux-gnu.tar.gz" \
-            -o "$RUNNER_TEMP/spacetime.tar.gz"
-          tar -xzf "$RUNNER_TEMP/spacetime.tar.gz" -C "$bin"
-          mv "$bin/spacetimedb-cli" "$bin/spacetime"
-          chmod +x "$bin/spacetime" "$bin/spacetime-standalone"
+            -o "$archive"
+
+          echo "Archive contents:"
+          tar -tzf "$archive"
+          tar -xzf "$archive" -C "$bin"
+
+          echo "Extracted files:"
+          find "$bin" -maxdepth 2 -type f -printf '%P\n' | sort
+
+          if [ ! -f "$bin/spacetime" ] && [ -f "$bin/spacetimedb-cli" ]; then
+            mv "$bin/spacetimedb-cli" "$bin/spacetime"
+          fi
+
+          if [ ! -f "$bin/spacetime-standalone" ]; then
+            standalone="$(find "$bin" -maxdepth 2 -type f -name 'spacetime-standalone' -print -quit)"
+            if [ -n "$standalone" ] && [ "$standalone" != "$bin/spacetime-standalone" ]; then
+              mv "$standalone" "$bin/spacetime-standalone"
+            fi
+          fi
+
+          for file in "$bin/spacetime" "$bin/spacetime-standalone"; do
+            if [ -f "$file" ]; then
+              chmod +x "$file"
+            fi
+          done
+
+          if [ ! -x "$bin/spacetime" ]; then
+            echo "::error::spacetime CLI binary not found after extracting v${SPACETIME_VERSION}"
+            exit 1
+          fi
+          if [ ! -x "$bin/spacetime-standalone" ]; then
+            echo "::error::spacetime-standalone binary not found after extracting v${SPACETIME_VERSION}"
+            exit 1
+          fi
+
           echo "$bin" >> "$GITHUB_PATH"
 
       - name: Verify toolchain
