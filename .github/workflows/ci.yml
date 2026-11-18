@@ -137,3 +137,155 @@ jobs:
       - name: Show server log on failure
         if: failure()
         run: cat "$RUNNER_TEMP/spacetime-server.log" || true
+
+  version-bump:
+    name: Version bump (Commitizen)
+    needs: gate
+    # Only release from the default branch, and never from a bump commit itself
+    # (the `[skip ci]` guard also stops GitHub from re-running CI on our push).
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      !contains(github.event.head_commit.message, '[skip ci]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out (full history and tags)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install Commitizen
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install commitizen
+          cz version --commitizen
+
+      - name: Configure git
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Log & detect version
+        id: version
+        run: |
+          set -euo pipefail
+
+          echo "Git history:"
+          git log -n 5 --oneline
+
+          CURRENT_PUBLISH_VERSION="$(cz version -p)"
+
+          # Commitizen exits 3 (no commits) or 21 (no eligible commits) when
+          # there is nothing to release; both mean "skip", not "fail".
+          set +e
+          NEXT_PUBLISH_VERSION="$(cz bump --get-next --dry-run 2>/dev/null)"
+          CZ_EXIT_CODE=$?
+          set -e
+          case "$CZ_EXIT_CODE" in
+            0) ;;
+            3|21) NEXT_PUBLISH_VERSION="" ;;
+            *)
+              echo "::error::cz bump --get-next failed with exit code $CZ_EXIT_CODE"
+              exit "$CZ_EXIT_CODE"
+              ;;
+          esac
+
+          HAS_NEW_VERSION=false
+          if [ -n "$NEXT_PUBLISH_VERSION" ] && [ "$CURRENT_PUBLISH_VERSION" != "$NEXT_PUBLISH_VERSION" ]; then
+            HAS_NEW_VERSION=true
+          fi
+
+          echo "Current version: $CURRENT_PUBLISH_VERSION"
+          echo "Next version: ${NEXT_PUBLISH_VERSION:-<none>}"
+          echo "Has new version: $HAS_NEW_VERSION"
+
+          echo "current_version=$CURRENT_PUBLISH_VERSION" >> "$GITHUB_OUTPUT"
+          echo "next_version=$NEXT_PUBLISH_VERSION" >> "$GITHUB_OUTPUT"
+          echo "has_new_version=$HAS_NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: No version bump needed
+        if: steps.version.outputs.has_new_version != 'true'
+        run: echo "No conventional commits requiring a release since the latest tag."
+
+      - name: Write next version to package.json
+        if: steps.version.outputs.has_new_version == 'true'
+        env:
+          NEXT_PUBLISH_VERSION: ${{ steps.version.outputs.next_version }}
+        run: |
+          set -euo pipefail
+          NEXT_PUBLISH_VERSION="$NEXT_PUBLISH_VERSION" node - <<'NODE'
+          const fs = require('node:fs');
+          const path = 'package.json';
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          pkg.version = process.env.NEXT_PUBLISH_VERSION;
+          fs.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
+          NODE
+
+          echo "package.json version set to $NEXT_PUBLISH_VERSION:"
+          git diff -- package.json
+
+      - name: Commit package.json version change
+        if: steps.version.outputs.has_new_version == 'true'
+        run: |
+          set -euo pipefail
+          git add package.json
+          git commit -m "[skip ci] Update version in package.json"
+
+      - name: Bump version, changelog and git tag
+        if: steps.version.outputs.has_new_version == 'true'
+        run: |
+          set -euo pipefail
+          echo "Git history before version bump:"
+          git log -n 5 --oneline
+
+          # Commitizen owns .cz.json, CHANGELOG.md and the annotated git tag.
+          cz bump --yes --annotated-tag --check-consistency
+
+          echo "Git history after version bump:"
+          git log -n 5 --oneline
+          echo "Tags:"
+          git tag -l
+
+      - name: Verify bump result
+        if: steps.version.outputs.has_new_version == 'true'
+        env:
+          NEXT_PUBLISH_VERSION: ${{ steps.version.outputs.next_version }}
+        run: |
+          set -euo pipefail
+          actual="$(node -p "require('./package.json').version")"
+          if [ "$actual" != "$NEXT_PUBLISH_VERSION" ]; then
+            echo "::error::Expected package.json version $NEXT_PUBLISH_VERSION but found $actual"
+            exit 1
+          fi
+          tag="$(git tag --points-at HEAD)"
+          if [ "$tag" != "$NEXT_PUBLISH_VERSION" ]; then
+            echo "::error::Expected tag $NEXT_PUBLISH_VERSION on HEAD but found '${tag:-<none>}'"
+            exit 1
+          fi
+          echo "Verified version $actual and tag $tag on HEAD."
+          git status --short
+
+      - name: Push version bump commit and tag
+        if: steps.version.outputs.has_new_version == 'true'
+        env:
+          NEXT_PUBLISH_VERSION: ${{ steps.version.outputs.next_version }}
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:${{ github.ref_name }}"
+          git push origin "refs/tags/$NEXT_PUBLISH_VERSION"
