@@ -106,6 +106,10 @@ jobs:
       - name: Start disposable local server
         run: |
           set -euo pipefail
+          # v2.15.0 seeds a built-in `local` server at 127.0.0.1:3000, so a plain
+          # `server add` conflicts with it. Replace any existing entry first so
+          # this step is idempotent on fresh and reused runners alike.
+          spacetime server remove local -y >/dev/null 2>&1 || true
           spacetime server add local --url http://127.0.0.1:3000 --no-fingerprint
           spacetime start --in-memory --non-interactive \
             > "$RUNNER_TEMP/spacetime-server.log" 2>&1 &
