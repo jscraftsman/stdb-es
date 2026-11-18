@@ -322,12 +322,21 @@ export const counterStream = makeStreamView(spacetimedb, {
 Compare identities with `.equals()`, never `===`: SpacetimeDB identities are objects compared by
 value.
 
-`VIEWS_COUNTER.stream` is a parameterized view, so a client subscribes with SQL literals:
+`VIEWS_COUNTER.stream` is a parameterized view, so a client subscribes with SQL literals. The shipped
+subscription bridge binds the query to a row handler:
 
 ```ts
-import { viewQuery } from 'stdb-es/client';
+import { subscribeEventRows, viewQuery } from 'stdb-es/client';
 
-connection.subscribe([viewQuery(VIEWS_COUNTER.stream, [id])]);
+const subscription = subscribeEventRows({
+  connection,
+  query: { query: viewQuery(VIEWS_COUNTER.stream, [id]) },
+  readRows: (ctx) => [...ctx.db.counterStream.iter()], // generated cache for the view
+  onRows: (rows) => render(rows),
+  onError: (error) => console.error(error),
+});
+
+// Later: subscription.unsubscribe();
 ```
 
 ## API
@@ -483,8 +492,10 @@ All three are `public` parameterized views. They read only indexed columns (`fin
 `.iter()`, and return an empty result when `authorize` says no. They are best for support, audit, and
 low-volume reads; for hot read paths, define an app-owned anonymous view over a materialized table.
 
-`stdb-es/client` provides `viewQuery(name, args)` and `tableQuery(name)` for subscriptions, plus
-`sqlString`/`sqlLiteral` for safe literal escaping.
+`stdb-es/client` provides `viewQuery(name, args)` and `tableQuery(name)` for subscriptions,
+`sqlString`/`sqlLiteral` for safe literal escaping, and `subscribeEventRows` /
+`createStreamSubscription` to bind queries to row handlers with pruning, reconnect replay, and error
+propagation.
 
 ### Doctor
 
@@ -514,11 +525,16 @@ encodeEvents(registry, events, { newEventId?, metadata? });
 decodeEvent(registry, row);
 createEventStoreClient({ append, registry, newEventId? });
 sliceRows(decodedRows, { streamId?, fromVersion?, atVersion?, atTimestampMicros?, limit? });
+viewQuery(name, args);  tableQuery(name);  sqlLiteral(value);
+subscribeEventRows({ connection, query, readRows, onRows, onError?, streamId? });
+createStreamSubscription({ connection, query(streamId), readRows, onRows });
 ```
 
-The client owns no state. Event ids default to `crypto.randomUUID()`; the server deduplicates by id,
-so retries are safe. `upgrade` in an event definition is the escape hatch for schema evolution: old
-payloads are migrated to the current shape before `decode` runs.
+The append client owns no state. Event ids default to `crypto.randomUUID()`; the server deduplicates
+by id, so retries are safe. `upgrade` in an event definition is the escape hatch for schema evolution:
+old payloads are migrated to the current shape before `decode` runs. The separate subscription bridge
+binds queries to row handlers; it registers callbacks once and lets SDK reconnect replay refresh
+rows.
 
 ### Testing
 
@@ -623,15 +639,16 @@ the head counter, and every projection.
 | --- | --- |
 | `stdb-es` | Error codes, the `streamId(prefix, key)` helper, and protocol types (safe from client and server code) |
 | `stdb-es/server` | Tables, append/read, repository, projections, view factories, doctor |
-| `stdb-es/client` | Event registry, encoding, append client, subscription query helpers |
+| `stdb-es/client` | Event registry, encoding, append client, subscription query helpers, subscription bridge |
 | `stdb-es/testing` | Contract tests, fixtures, and the `withIndexRanges` harness shim |
 
 ## Development
 
 ```bash
 npm install
-npm test              # 85 tests, in-memory harness
+npm test              # 93 tests, in-memory harness
 npm run build         # tsc -> dist (declarations included)
+npm run check:pack    # install a packed tarball in a fresh workspace app
 npm run smoke         # publish the example and run the live smoke test
 ```
 

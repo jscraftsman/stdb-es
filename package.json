@@ -5,6 +5,7 @@
   "license": "MIT",
   "author": "gervel@jscraftsman.com",
   "type": "module",
+  "sideEffects": false,
   "engines": {
     "node": ">=20"
   },
@@ -61,6 +62,7 @@
     "example:set:counter:publish": "npm run example:set:counter:build && npm run example:set:counter:generate && npm run example:set:counter:typecheck && spacetime publish stdb-es-counter-with-frontend -s local -p examples/sets/counter-with-frontend/spacetimedb",
     "example:set:counter:start": "npm run example:set:counter:publish && npm --prefix examples/sets/counter-with-frontend/web run dev",
     "smoke": "npm run example:publish:fresh && node scripts/smoke-example.mjs",
+    "check:pack": "node scripts/pack-install-check.mjs",
     "prepublishOnly": "npm run clean && npm run build && npm test"
   },
   "peerDependencies": {

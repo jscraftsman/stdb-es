@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 24.22.3
+  SPACETIME_VERSION: 2.15.0
+
+jobs:
+  gate:
+    name: build, typecheck, unit, pack, smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install pinned SpacetimeDB CLI
+        run: |
+          set -euo pipefail
+          bin="$RUNNER_TEMP/spacetime/bin"
+          mkdir -p "$bin"
+          curl -sSfL \
+            "https://github.com/clockworklabs/SpacetimeDB/releases/download/v${SPACETIME_VERSION}/spacetime-x86_64-unknown-linux-gnu.tar.gz" \
+            -o "$RUNNER_TEMP/spacetime.tar.gz"
+          tar -xzf "$RUNNER_TEMP/spacetime.tar.gz" -C "$bin"
+          mv "$bin/spacetimedb-cli" "$bin/spacetime"
+          chmod +x "$bin/spacetime" "$bin/spacetime-standalone"
+          echo "$bin" >> "$GITHUB_PATH"
+
+      - name: Verify toolchain
+        run: |
+          node --version
+          npm --version
+          spacetime --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and typecheck
+        run: |
+          npm run build
+          npm run typecheck
+          npm run example:typecheck
+          npm run example:set:counter:typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Fresh-app package check
+        run: npm run check:pack
+
+      - name: Start disposable local server
+        run: |
+          set -euo pipefail
+          spacetime server add local --url http://127.0.0.1:3000 --no-fingerprint
+          spacetime start --in-memory --non-interactive \
+            > "$RUNNER_TEMP/spacetime-server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/spacetime-server.pid"
+          for _ in $(seq 1 60); do
+            if spacetime server ping local >/dev/null 2>&1; then
+              echo "local server ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/spacetime-server.log"
+          exit 1
+
+      - name: Live publish smoke
+        run: npm run smoke
+
+      - name: Stop disposable local server
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/spacetime-server.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/spacetime-server.pid")" 2>/dev/null || true
+          fi
+
+      - name: Show server log on failure
+        if: failure()
+        run: cat "$RUNNER_TEMP/spacetime-server.log" || true

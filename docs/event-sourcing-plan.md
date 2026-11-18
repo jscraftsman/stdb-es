@@ -801,15 +801,19 @@ createEventStoreClient({ append, registry, newEventId? });
   // encode / append / retry / decode / decodeAll
 sliceRows(decodedRows, { streamId?, fromVersion?, atVersion?, atTimestampMicros?, limit? });
 viewQuery(name, args);  tableQuery(name);  sqlLiteral(value);
+subscribeEventRows({ connection, query, readRows, onRows, onError?, streamId? });
+createStreamSubscription({ connection, query(streamId), readRows, onRows });
 ```
 
 - `append` calls the app's generated reducer; `retry` re-sends the exact encoded batch, event ids
   included, so a timeout after a commit settles as a replay instead of a duplicate.
 - `decode` turns `{ eventType, data }` into a discriminated union. Upcasters live here, so old events
   read as current types.
-- The client owns no state; `sliceRows` filters the rows the subscription already delivered.
-- **Planned (M5):** a subscription helper that binds `viewQuery`/`tableQuery` to handlers, including
-  reconnect and pruning by stream. It must surface reducer errors rather than swallowing them.
+- The append client and `sliceRows` own no state; they filter rows a subscription already delivered.
+- **Shipped (M5):** `subscribeEventRows` binds a view/table/raw query to row handlers, filters rows by
+  stream, registers callbacks once so SDK reconnect replay refreshes them, and routes errors to
+  `onError` or rethrows them. `createStreamSubscription` keeps one per-stream query active and ignores
+  stale callbacks after a switch.
 - The client entry is browser-safe; integration-test tooling is a separate Node-only entry (R3).
 
 ---
@@ -837,7 +841,7 @@ Shipped: `npm test` runs the offline suite with the in-memory harness. No server
 
 Package-specific: batch replay idempotency, partial-duplicate rejection, gapless position across
 streams, `es_head` rollback, state-cache drift detection, view fixture parity, payload validation,
-and every stable `ES_*` error code.
+subscription replay/pruning/error propagation, and every stable `ES_*` error code.
 
 Floor for R1: every public export has a direct test or is exercised by the contract suite; every
 `ES_*` error has a rejection test; `npm test` and `npm run build` are green offline. The contract
@@ -897,9 +901,14 @@ runs against `spacetime start --in-memory`.
 
 ### 14.5 CI (R5)
 
-Library typecheck, example typecheck, offline `vitest run`, `spacetime build`, then the live smoke
-suite on a disposable local server. When M7 lands, the consumer integration suite joins the same
-gate. Before any release, `npm pack` must install into a fresh workspace app.
+`.github/workflows/ci.yml` runs on push, pull request, and manual dispatch. It pins Node `24.22.3`
+and SpacetimeDB CLI `2.15.0`, then gates on build, library and example typechecks, offline
+`vitest run`, a packed fresh-workspace install (`npm run check:pack`), and the live smoke suite on a
+disposable in-memory local server. The pack check verifies the published `exports` map and shipped
+declarations from module-like and web-like workspaces; it loads browser-safe entry points at runtime
+and typechecks `stdb-es/server`, which needs the SpacetimeDB host to execute. When M7 lands, the
+consumer integration suite joins the same gate. Workflow configuration is committed here; a GitHub
+Actions run has not yet been observed.
 
 ---
 
@@ -914,7 +923,7 @@ gate. Before any release, `npm pack` must install into a fresh workspace app.
 | M2 | `readStream`, `getStreamState`, `aggregateStream`, time travel, view factories | 05–06 green; SQL time-travel recipe works | done |
 | M3 | Aggregate, Repository, state cache + version guard, registry codec | 07–08 green; cache parity test green | done |
 | M4 | Inline projections + `rebuildBatch` + view factories + contract tests + **core unit-test floor** | 09 green; drift + smoke green; every public export covered offline | done |
-| M5 | Shared `streamId` helper, client SDK completion (subscription helper), npm metadata, CI gate | `streamId` shape/limit/error tests green; subscription helper tested; CI runs build + typecheck + unit + smoke; `npm pack` installs into a fresh app | in progress |
+| M5 | Shared `streamId` helper, client SDK completion (subscription helper), npm metadata, CI gate | `streamId` shape/limit/error tests green; 8 subscription-helper tests green (93 total); CI workflow runs build + typecheck + unit + pack + smoke; fresh-app `npm pack` check passed locally | done |
 | M6 | **Consumer unit-test kit** (`stdb-es/testing`) | fake append, id helpers, and failure assertions shipped; a one-import, ~10-line consumer test needs no server | planned |
 | M7 | **Consumer integration-test kit** (`stdb-es/testing/integration`) | one call creates, publishes, and tears down a disposable database; concurrency, subscription, and anonymous-view cases green locally and remotely | planned |
 | M8 | **Developer documentation**: `docs/usage-guide.md`, `docs/API.md`, README glossary | all four guide parts present; every shipped export documented with inputs/outputs; README glossary links to both documents | documentation done |

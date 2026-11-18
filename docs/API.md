@@ -13,7 +13,7 @@ available yet.
 | --- | --- | --- |
 | `stdb-es` | module or client | Stable error codes, error helpers, the `streamId` helper, protocol types and constants |
 | `stdb-es/server` | SpacetimeDB module only | Tables, append/read, aggregates, repositories, projections, views, doctor |
-| `stdb-es/client` | browser or Node client | Registry, encoding, append client, row helpers, subscription query helpers |
+| `stdb-es/client` | browser or Node client | Registry, encoding, append client, row helpers, subscription query and event-row helpers |
 | `stdb-es/testing` | Vitest tests | Harness shim, fixtures, contract suite |
 
 Conventions used below:
@@ -308,7 +308,8 @@ Methods on the returned client:
 | `decodeAll(rows)` | `StoredEventRow[]` | `DecodedEventRow<TEvent>[]` |
 | `registry` | — | The registry passed at construction |
 
-The client owns no state and performs no subscription management.
+The append client itself owns no state and performs no subscription management. The separate
+subscription bridge in §3.4 can be used when a client needs live rows.
 
 ### 3.3 Subscription query helpers
 
@@ -322,6 +323,53 @@ The client owns no state and performs no subscription management.
 
 Use `viewQuery(VIEWS_ORDER.stream, [streamId(STREAM_PREFIXES_ORDER.order, '42')])` rather than
 constructing SQL from raw user input. Both constants are app-owned; see the usage guide.
+
+### 3.4 Subscription helpers
+
+These helpers bridge the SQL builders above to the SDK's `subscriptionBuilder()`. They use structural
+types, so a generated `DbConnection` is accepted without importing generated code into this package.
+
+| Symbol | Purpose | Inputs / fields | Output |
+| --- | --- | --- | --- |
+| `SubscriptionQuery` | Query input | `{ view, args? }`, `{ table }`, or `{ query }` (one SQL string or an array) | Compile-time only |
+| `EventSubscriptionOptions<TRow>` | Configuration for one subscription | `connection`, `query`, `readRows(ctx)`, `onRows(rows, ctx)`, optional `onError(error, errorCtx)`, `streamId`, `rowStreamId(row)` | Compile-time only |
+| `subscribeEventRows(opts)` | Registers a query and forwards applied rows | Options above | `EventSubscription` |
+| `EventSubscription` | Retained SDK handle | `queries`, `unsubscribe()`, `unsubscribeThen(onEnd)`, `isActive()`, `isEnded()` | Returned by `subscribeEventRows` |
+| `StreamSubscriptionOptions<TRow>` | Configuration for a single-stream switcher | Same as above, but `query(streamId)` and `onRows(rows, ctx, streamId)`; no fixed `streamId` | Compile-time only |
+| `createStreamSubscription(opts)` | Keeps exactly one stream query active | Options above | `StreamSubscription` |
+| `StreamSubscription` | Stream switcher handle | `streamId`, `queries`, `select(streamId)`, `unsubscribe()`, `unsubscribeThen(onEnd)`, `isActive()`, `isEnded()` | Returned by `createStreamSubscription` |
+| `SubscriptionConnection`, `SubscriptionBuilder`, `SubscriptionHandleLike` | Structural SDK types | The `subscriptionBuilder()`, callback registration, and handle methods used here | Compile-time only |
+
+`readRows(ctx)` extracts the current rows from the SDK subscription context, for example
+`ctx => [...ctx.db.counterSummary.iter()]`. When `streamId` is supplied, rows are filtered to that
+stream and `rowStreamId` can override the default `streamId` / `stream_id` row lookup; a row without a
+usable id throws. `createStreamSubscription` sets `streamId` automatically, unsubscribes the previous
+handle on `select`, ignores late callbacks from that handle, and passes the selected id to `onRows`.
+
+Callbacks are registered once. With automatic reconnect enabled, the SDK replays the retained query
+and invokes `onApplied` again, so `onRows` receives refreshed rows without a second `subscribe()`
+call. `onError` receives subscription and reducer errors; if omitted, the error is rethrown rather
+than swallowed. `unsubscribeThen` delegates to the SDK handle when available.
+
+```ts
+import { streamId } from 'stdb-es';
+import { subscribeEventRows } from 'stdb-es/client';
+import { STREAM_PREFIXES_ORDER, VIEWS_ORDER } from './constants.js';
+
+const id = streamId(STREAM_PREFIXES_ORDER.order, '42');
+
+const subscription = subscribeEventRows({
+  connection, // a generated DbConnection
+  query: { view: VIEWS_ORDER.stream, args: [id] },
+  streamId: id,
+  readRows: (ctx) => [...ctx.db.orderStream.iter()], // the generated cache for the view
+  onRows: (rows) => render(rows),
+  onError: (error) => report(error),
+});
+
+// Later, when the screen unmounts:
+subscription.unsubscribe();
+```
 
 ---
 
@@ -372,6 +420,5 @@ Do not import these; they have no runtime implementation yet.
 | --- | --- | --- |
 | `createModuleTest`, `ids`, `expectAppendError`, `createFakeAppend` | M6 | One-import consumer unit-test helpers for module contexts, ids, error assertions, and client append fakes |
 | `stdb-es/testing/integration` with `createIntegrationEnv` | M7 | Node-only publish/call/SQL/connect/wait/dispose lifecycle; local mode spawns and owns `spacetime start --in-memory --non-interactive`, URL mode connects to an external server |
-| Subscription helper | M5 | Binds view/table queries to handlers with reconnect and pruning |
 | Typed-enum payload mode | later | Schema-enforced event unions; currently only designed and spiked |
 | Async projection pump, `es_checkpoint`, dead-letter, scheduled rebuild | M14 (v1.1) | Offload expensive projections without changing the event model |

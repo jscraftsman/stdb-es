@@ -12,7 +12,7 @@ For the complete signature of every export, see [API.md](API.md). For owner-only
 | --- | --- | --- |
 | `stdb-es` | module or client | Error codes, the `streamId` helper, and wire/protocol types |
 | `stdb-es/server` | module only | Tables, append/read helpers, repositories, projections, view factories, doctor helpers |
-| `stdb-es/client` | browser or Node client | Event registry, encoding, append client, subscription query helpers |
+| `stdb-es/client` | browser or Node client | Event registry, encoding, append client, subscription query helpers, subscription bridge |
 | `stdb-es/testing` | Vitest tests | Harness shim, wire fixtures, contract suite |
 
 > Never import `stdb-es/server` into browser code. Never import Node-only test tooling into a module
@@ -1518,7 +1518,7 @@ const current = sliceRows(decoded, {
 `sliceRows` sorts by version. It filters rows the subscription already delivered; it is not a second
 source of truth and does not fetch missing history.
 
-### 2.5 Subscription queries
+### 2.5 Subscription queries and live rows
 
 ```ts
 import { streamId } from 'stdb-es';
@@ -1527,17 +1527,64 @@ import { STREAM_PREFIXES_COUNTER, TABLES_COUNTER, VIEWS_ORDER } from './constant
 
 const id = streamId(STREAM_PREFIXES_COUNTER.counter, '1');
 
-connection.subscribe([
+const queries = [
   tableQuery(TABLES_COUNTER.summary),
   viewQuery(VIEWS_ORDER.stream, [id]),
   viewQuery(VIEWS_ORDER.at, [id, 10]),
-]);
+];
 
 viewQuery(VIEWS_ORDER.stream, ["O'Brien"]); // strings are escaped by viewQuery
 ```
 
 `viewQuery(name, args)` emits `SELECT * FROM name(args...)`, escaping strings and formatting
 bigints/booleans/nulls. Identifiers are validated; they are not escaped as values.
+
+To bind a query to a row handler, use the shipped subscription bridge:
+
+```ts
+import { subscribeEventRows } from 'stdb-es/client';
+
+const subscription = subscribeEventRows({
+  connection, // a generated DbConnection
+  query: { view: VIEWS_ORDER.stream, args: [id] },
+  streamId: id,
+  readRows: (ctx) => [...ctx.db.orderStream.iter()], // generated cache for the view
+  onRows: (rows) => {
+    currentRows = rows;
+  },
+  onError: (error) => {
+    lastError = error;
+  },
+});
+
+// Later, when the screen unmounts:
+subscription.unsubscribe();
+```
+
+`query` also accepts `{ table }` or `{ query: '<sql>' }`, so the builders above can be passed through
+when needed. `readRows` extracts rows from the SDK context. With `streamId`, only rows for that stream
+reach `onRows`; `rowStreamId` overrides the default `streamId` / `stream_id` row lookup. Callbacks are
+registered once: SDK automatic reconnect replay invokes `onApplied` again without a second
+`subscribe()`. Errors go to `onError`; without it they are rethrown, never swallowed.
+
+For a screen that shows one stream at a time, `createStreamSubscription` keeps one active query:
+
+```ts
+import { createStreamSubscription } from 'stdb-es/client';
+
+const streams = createStreamSubscription({
+  connection,
+  query: (streamId) => ({ view: VIEWS_ORDER.stream, args: [streamId] }),
+  readRows: (ctx) => [...ctx.db.orderStream.iter()],
+  onRows: (rows, _ctx, streamId) => renderStream(streamId, rows),
+  onError: (error) => report(error),
+});
+
+streams.select(id);
+```
+
+`select` unsubscribes the previous stream, ignores its late callbacks, and passes the selected id to
+`onRows`. Call `unsubscribe()` when the screen is done.
 
 ### 2.6 Stream IDs
 
@@ -1956,7 +2003,8 @@ export function CounterPanel() {
   );
 
   // Parameterized views are not covered by useTable's typed query builder;
-  // subscribe through the connection with a literal query.
+  // subscribe through the connection with a literal query. Use subscribeEventRows
+  // (§2.5) when you need to bind the query to a row handler yourself.
   useEffect(() => {
     const connection = getConnection();
     if (!connection) return;
