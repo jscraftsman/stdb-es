@@ -42,14 +42,15 @@ These are the terms used by the API and the guides. "Server" means SpacetimeDB m
 
 | Term | Meaning in `stdb-es` |
 | --- | --- |
+| **App-owned constants** | Per-domain `constants.ts` exports (`STREAM_TYPES_*`, `STREAM_PREFIXES_*`, `EVENT_TYPES_*`, `TABLES_*`, `VIEWS_*`, `ROWS_*`) for literals the app owns. The core package never exports them. |
 | **Stream** | One append-only sequence of events for one business object or process, identified by a stream id. It is the unit of optimistic concurrency. |
-| **Stream id** | The caller-supplied primary key of a stream, for example `order-42`. The same id must always use the same stream type. Use the shared `streamId(prefix, key)` helper to format and validate it. |
+| **Stream id** | The caller-supplied primary key of a stream, for example `streamId(STREAM_PREFIXES_ORDER.order, '42')`. The same id must always use the same stream type. Use the shared helper to format and validate it. |
 | **Stream id helper** | `streamId(prefix, key)` from `stdb-es`: builds `<prefix>-<key>`, rejects unsafe characters, and enforces the 256-character limit. Formatting only — ownership is still an app decision. |
-| **Stream type** | The aggregate/process kind recorded on a stream, such as `Order` or `Transfer`. It lets one module host many kinds of streams. |
+| **Stream type** | The aggregate/process kind recorded on a stream, such as `STREAM_TYPES_ORDER.Order`. It lets one module host many kinds of streams. |
 | **Event** | A fact that has happened. It is stored as an immutable row in the private `es_event` table. |
 | **Event envelope** | The stable stored columns around the payload: `eventId`, `position`, `streamId`, `streamType`, `version`, `eventType`, `metadata`, timestamps, and sender. |
 | **Event id** | A globally unique id supplied by the caller. The primary key on `es_event.eventId` is what makes retries idempotent. Generate a fresh one for each genuinely new event; reuse the same ones when retrying a batch. |
-| **Event type** | The string that selects a codec in the client registry, such as `Incremented`. It is not the stream type. |
+| **Event type** | The string that selects a codec in the client registry, such as `EVENT_TYPES_COUNTER.Incremented`. It is not the stream type. |
 | **Payload / `data`** | The JSON-serializable body of an event, stored as canonical JSON in a string column. The server validates that it is JSON but does not interpret its shape. |
 | **Metadata** | Optional JSON-or-text context attached to an append or an individual event. The store carries it without interpreting it. |
 | **Version** | The 1-based position of an event inside one stream. The stream's current version is its concurrency token. |
@@ -93,6 +94,25 @@ npm install stdb-es spacetimedb
 ### 1. Module: tables, append reducer, state cache
 
 ```ts
+// spacetimedb/src/domains/counter/constants.ts
+export const STREAM_TYPES_COUNTER = { Counter: 'Counter' } as const;
+export const STREAM_PREFIXES_COUNTER = { counter: 'counter' } as const;
+export const EVENT_TYPES_COUNTER = {
+  Incremented: 'Incremented',
+  Decremented: 'Decremented',
+  Reset: 'Reset',
+} as const;
+export const TABLES_COUNTER = {
+  state: 'counter_state',
+  totals: 'counter_totals',
+  owner: 'counter_owner',
+} as const;
+export const VIEWS_COUNTER = {
+  stream: 'counter_stream',
+  summary: 'counter_summary',
+} as const;
+export const ROWS_COUNTER = { totals: 'global' } as const;
+
 // spacetimedb/src/index.ts
 import { schema, t, table } from 'spacetimedb/server';
 import {
@@ -104,15 +124,21 @@ import {
   type InlineProjection,
   type StateCache,
 } from 'stdb-es/server';
+import {
+  EVENT_TYPES_COUNTER,
+  ROWS_COUNTER,
+  STREAM_TYPES_COUNTER,
+  TABLES_COUNTER,
+} from './domains/counter/constants.js';
 
 export type CounterEvent =
-  | { kind: 'Incremented'; by: number }
-  | { kind: 'Decremented'; by: number }
-  | { kind: 'Reset' };
+  | { kind: typeof EVENT_TYPES_COUNTER.Incremented; by: number }
+  | { kind: typeof EVENT_TYPES_COUNTER.Decremented; by: number }
+  | { kind: typeof EVENT_TYPES_COUNTER.Reset };
 
 /** App-owned current-state cache. Private, typed, disposable at the cost of a replay. */
 const counterState = table(
-  { name: 'counter_state' },
+  { name: TABLES_COUNTER.state },
   {
     streamId: t.string().primaryKey(),
     version: t.u32(), // the guard: load only trusts a row at es_stream.version
@@ -122,13 +148,13 @@ const counterState = table(
 
 /** Materialized read model maintained in the append transaction. */
 const counterTotals = table(
-  { name: 'counter_totals' },
+  { name: TABLES_COUNTER.totals },
   { id: t.string().primaryKey(), increments: t.u64(), decrements: t.u64() },
 );
 
 /** Ownership table used by the view factory's authorize predicate. */
 const counterOwner = table(
-  { name: 'counter_owner' },
+  { name: TABLES_COUNTER.owner },
   { streamId: t.string().primaryKey(), owner: t.identity() },
 );
 
@@ -136,23 +162,25 @@ export const spacetimedb = schema({ ...esTables, counterState, counterTotals, co
 export default spacetimedb;
 
 const totals: InlineProjection<CtxOf<typeof spacetimedb>> = {
-  name: 'counter_totals',
-  handles: ['Incremented', 'Decremented'],
+  name: TABLES_COUNTER.totals,
+  handles: [EVENT_TYPES_COUNTER.Incremented, EVENT_TYPES_COUNTER.Decremented],
   handle: (ctx, row) => {
-    const current = ctx.db.counterTotals.id.find('global');
+    const current = ctx.db.counterTotals.id.find(ROWS_COUNTER.totals);
     const event = JSON.parse(row.data) as CounterEvent;
     const next = {
-      id: 'global',
+      id: ROWS_COUNTER.totals,
       increments:
-        (current?.increments ?? 0n) + (event.kind === 'Incremented' ? BigInt(event.by) : 0n),
+        (current?.increments ?? 0n) +
+        (event.kind === EVENT_TYPES_COUNTER.Incremented ? BigInt(event.by) : 0n),
       decrements:
-        (current?.decrements ?? 0n) + (event.kind === 'Decremented' ? BigInt(event.by) : 0n),
+        (current?.decrements ?? 0n) +
+        (event.kind === EVENT_TYPES_COUNTER.Decremented ? BigInt(event.by) : 0n),
     };
     if (current) ctx.db.counterTotals.id.update(next);
     else ctx.db.counterTotals.id.insert(next);
   },
   reset: (ctx) => {
-    ctx.db.counterTotals.id.delete('global');
+    ctx.db.counterTotals.id.delete(ROWS_COUNTER.totals);
   },
 };
 
@@ -171,8 +199,8 @@ const counterCache: StateCache<{ value: bigint }, CtxOf<typeof spacetimedb>> = {
 };
 
 const applyEvent = (value: bigint, event: CounterEvent): bigint => {
-  if (event.kind === 'Incremented') return value + BigInt(event.by);
-  if (event.kind === 'Decremented') return value - BigInt(event.by);
+  if (event.kind === EVENT_TYPES_COUNTER.Incremented) return value + BigInt(event.by);
+  if (event.kind === EVENT_TYPES_COUNTER.Decremented) return value - BigInt(event.by);
   return 0n;
 };
 
@@ -187,7 +215,11 @@ function replayCounter(ctx: CtxOf<typeof spacetimedb>, streamId: string): bigint
 
 export const appendEvents = makeAppendReducer(spacetimedb, {
   // Reject unregistered event types at write time instead of storing garbage.
-  eventTypes: ['Incremented', 'Decremented', 'Reset'],
+  eventTypes: [
+    EVENT_TYPES_COUNTER.Incremented,
+    EVENT_TYPES_COUNTER.Decremented,
+    EVENT_TYPES_COUNTER.Reset,
+  ],
   // Runs in the same transaction, only for genuinely new events.
   onAppended: (ctx, result) => {
     const streamId = result.rows[0]?.streamId;
@@ -219,25 +251,35 @@ clients observe the new version through their subscription or a view.
 ### 2. Client: encode, append, retry
 
 ```ts
+import { NO_STREAM, streamId } from 'stdb-es';
 import { createEventRegistry, createEventStoreClient } from 'stdb-es/client';
+// The same app-owned constants, shared or mirrored across module and web.
+import {
+  EVENT_TYPES_COUNTER,
+  STREAM_PREFIXES_COUNTER,
+  STREAM_TYPES_COUNTER,
+} from './constants.js';
 
 type CounterEvent =
-  | { kind: 'Incremented'; by: number }
-  | { kind: 'Decremented'; by: number }
-  | { kind: 'Reset' };
+  | { kind: typeof EVENT_TYPES_COUNTER.Incremented; by: number }
+  | { kind: typeof EVENT_TYPES_COUNTER.Decremented; by: number }
+  | { kind: typeof EVENT_TYPES_COUNTER.Reset };
 
 const registry = createEventRegistry<CounterEvent>({
-  typeOf: (event) => event.kind,
+  typeOf: (event) => EVENT_TYPES_COUNTER[event.kind],
   events: {
-    Incremented: {
+    [EVENT_TYPES_COUNTER.Incremented]: {
       encode: (event) => event,
-      decode: (payload: any) => ({ kind: 'Incremented', by: payload.by }),
+      decode: (payload: any) => ({ kind: EVENT_TYPES_COUNTER.Incremented, by: payload.by }),
     },
-    Decremented: {
+    [EVENT_TYPES_COUNTER.Decremented]: {
       encode: (event) => event,
-      decode: (payload: any) => ({ kind: 'Decremented', by: payload.by }),
+      decode: (payload: any) => ({ kind: EVENT_TYPES_COUNTER.Decremented, by: payload.by }),
     },
-    Reset: { encode: (event) => event, decode: () => ({ kind: 'Reset' }) },
+    [EVENT_TYPES_COUNTER.Reset]: {
+      encode: (event) => event,
+      decode: () => ({ kind: EVENT_TYPES_COUNTER.Reset }),
+    },
   },
 });
 
@@ -247,23 +289,29 @@ const store = createEventStoreClient({
   registry,
 });
 
-// Optimistic concurrency: 0 means "the stream must not exist yet".
-await store.append('counter-1', 'Counter', [{ kind: 'Incremented', by: 5 }], {
-  expectedVersion: 0,
-});
+const id = streamId(STREAM_PREFIXES_COUNTER.counter, '1');
+
+// Optimistic concurrency: NO_STREAM requires a new stream.
+await store.append(
+  id,
+  STREAM_TYPES_COUNTER.Counter,
+  [{ kind: EVENT_TYPES_COUNTER.Incremented, by: 5 }],
+  { expectedVersion: NO_STREAM },
+);
 
 // Encode once, retry verbatim: event ids make the retry idempotent.
-const batch = store.encode([{ kind: 'Incremented', by: 2 }]);
-await store.retry('counter-1', 'Counter', batch, { expectedVersion: 1 });
+const batch = store.encode([{ kind: EVENT_TYPES_COUNTER.Incremented, by: 2 }]);
+await store.retry(id, STREAM_TYPES_COUNTER.Counter, batch, { expectedVersion: 1 });
 ```
 
 ### 3. Read model: a view the app owns
 
 ```ts
 import { makeStreamView } from 'stdb-es/server';
+import { VIEWS_COUNTER } from './domains/counter/constants.js';
 
 export const counterStream = makeStreamView(spacetimedb, {
-  name: 'counter_stream', // parameter: { streamId: string }
+  name: VIEWS_COUNTER.stream, // parameter: { streamId: string }
   // Required. Views are public; this decides who may see the stream.
   authorize: (ctx, streamId) =>
     ctx.db.counterOwner.streamId.find(streamId)?.owner.equals(ctx.sender) ?? false,
@@ -273,12 +321,12 @@ export const counterStream = makeStreamView(spacetimedb, {
 Compare identities with `.equals()`, never `===`: SpacetimeDB identities are objects compared by
 value.
 
-`counter_stream` is a parameterized view, so a client subscribes with SQL literals:
+`VIEWS_COUNTER.stream` is a parameterized view, so a client subscribes with SQL literals:
 
 ```ts
 import { viewQuery } from 'stdb-es/client';
 
-connection.subscribe([viewQuery('counter_stream', ['counter-1'])]);
+connection.subscribe([viewQuery(VIEWS_COUNTER.stream, [id])]);
 ```
 
 ## API
@@ -344,12 +392,16 @@ the payload.
 ```ts
 const counter = makeRepository(
   {
-    streamType: 'Counter',
+    streamType: STREAM_TYPES_COUNTER.Counter,
     initial: () => ({ value: 0n }),
     decode: (row) => JSON.parse(row.data) as CounterEvent,
     evolve: (state, event) => {
-      if (event.kind === 'Incremented') return { value: state.value + BigInt(event.by) };
-      if (event.kind === 'Decremented') return { value: state.value - BigInt(event.by) };
+      if (event.kind === EVENT_TYPES_COUNTER.Incremented) {
+        return { value: state.value + BigInt(event.by) };
+      }
+      if (event.kind === EVENT_TYPES_COUNTER.Decremented) {
+        return { value: state.value - BigInt(event.by) };
+      }
       return { value: 0n };
     },
   },
@@ -472,27 +524,34 @@ payloads are migrated to the current shape before `decode` runs.
 `stdb-es/testing` runs your real module through SpacetimeDB's module test harness:
 
 ```ts
+import { streamId } from 'stdb-es';
 import { runEventStoreContractTests, wireEvents } from 'stdb-es/testing';
+import {
+  EVENT_TYPES_COUNTER,
+  STREAM_PREFIXES_COUNTER,
+  STREAM_TYPES_COUNTER,
+  VIEWS_COUNTER,
+} from './domains/counter/constants.js';
 
 runEventStoreContractTests({
   spacetimedb,
   moduleExports: { appendEvents },
   append: (ctx, args) => appendEvents(ctx, args),
-  streamId: () => 'counter-1',
+  streamId: () => streamId(STREAM_PREFIXES_COUNTER.counter, '1'),
   streams: [
     {
-      streamType: 'Counter',
+      streamType: STREAM_TYPES_COUNTER.Counter,
       repository: counterRepository,
       stateCache: counterCache,
       replay: replayCounter,
       sample: {
-        wire: (streamId) => wireEvents(streamId, [
-          ['Incremented', { kind: 'Incremented', by: 5 }],
-          ['Decremented', { kind: 'Decremented', by: 2 }],
+        wire: (id) => wireEvents(id, [
+          [EVENT_TYPES_COUNTER.Incremented, { kind: EVENT_TYPES_COUNTER.Incremented, by: 5 }],
+          [EVENT_TYPES_COUNTER.Decremented, { kind: EVENT_TYPES_COUNTER.Decremented, by: 2 }],
         ]),
         domain: () => [
-          { kind: 'Incremented', by: 5 },
-          { kind: 'Decremented', by: 2 },
+          { kind: EVENT_TYPES_COUNTER.Incremented, by: 5 },
+          { kind: EVENT_TYPES_COUNTER.Decremented, by: 2 },
         ],
         expectedState: { value: 3n },
         corrupt: (state) => ({ value: state.value + 1000n }),
@@ -502,7 +561,7 @@ runEventStoreContractTests({
   projections: { projections, snapshot: (ctx) => [...ctx.db.counterTotals.iter()] },
   views: [
     {
-      name: 'counter_stream',
+      name: VIEWS_COUNTER.stream,
       view: counterStream,
       params: (streamId) => ({ streamId }),
       seed: (ctx, streamId) => ctx.db.counterOwner.insert({ streamId, owner: ctx.sender }),
@@ -587,8 +646,9 @@ CLI has skipped its own type check. `npm run example:typecheck` runs that check 
 part of `example:build`, `example:publish`, and `smoke`.
 
 It republishes `stdb-es-counter`, appends through the generated reducer, and asserts against
-`es_stream`, `counter_state`, and the anonymous `counter_summary` view — including a stale-version
-rejection, an idempotent retry, and a cache row that is deleted and then rebuilt by replay.
+`es_stream` plus the app-owned names in `TABLES_COUNTER.state` and `VIEWS_COUNTER.summary`
+(`counter_state` and `counter_summary`) — including a stale-version rejection, an idempotent retry,
+and a cache row that is deleted and then rebuilt by replay.
 
 The worked example lives in `examples/counter`. The design record, including the migration spike
 results and the rejected alternatives, is in [docs/event-sourcing-plan.md](docs/event-sourcing-plan.md).

@@ -76,7 +76,8 @@ Validation rules:
 - The resulting id must be at most 256 characters, matching `appendToStream`.
 
 `streamId` is a formatting helper only. It does not decide who may create a stream and does not check
-ownership. Import it from `stdb-es` in both module and client code.
+ownership. Import it from `stdb-es` in both module and client code, and keep the prefix in an
+app-owned `STREAM_PREFIXES_<DOMAIN>` constant.
 
 ### 1.4 Protocol constants
 
@@ -319,7 +320,8 @@ The client owns no state and performs no subscription management.
 | `viewQuery(name, args?)` | Builds a parameterized-view subscription query | View name, literal args in declaration order | `SELECT * FROM <name>(<args>)`. Throws on an invalid identifier. |
 | `tableQuery(name)` | Builds a table/anonymous-view query | Table name | `SELECT * FROM <name>`. Throws on an invalid identifier. |
 
-Use `viewQuery('order_stream', ['order-42'])` rather than constructing SQL from raw user input.
+Use `viewQuery(VIEWS_ORDER.stream, [streamId(STREAM_PREFIXES_ORDER.order, '42')])` rather than
+constructing SQL from raw user input. Both constants are app-owned; see the usage guide.
 
 ---
 
@@ -369,7 +371,7 @@ Do not import these; they have no runtime implementation yet.
 | Item | Milestone | Planned purpose |
 | --- | --- | --- |
 | `createModuleTest`, `ids`, `expectAppendError`, `createFakeAppend` | M6 | One-import consumer unit-test helpers for module contexts, ids, error assertions, and client append fakes |
-| `stdb-es/testing/integration` with `createIntegrationEnv` | M7 | Node-only publish/call/SQL/connect/wait/dispose lifecycle against an already-running server |
+| `stdb-es/testing/integration` with `createIntegrationEnv` | M7 | Node-only publish/call/SQL/connect/wait/dispose lifecycle; local mode spawns and owns `spacetime start --in-memory --non-interactive`, URL mode connects to an external server |
 | Subscription helper | M5 | Binds view/table queries to handlers with reconnect and pruning |
 | Typed-enum payload mode | later | Schema-enforced event unions; currently only designed and spiked |
 | Async projection pump, `es_checkpoint`, dead-letter, scheduled rebuild | M14 (v1.1) | Offload expensive projections without changing the event model |

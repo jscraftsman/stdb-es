@@ -759,8 +759,8 @@ The package enforces shape and behavior, not table definitions:
      spacetimedb,
      moduleExports: { appendEvents },
      append: (ctx, args) => appendEvents(ctx, args),
-     streamId: () => 'counter-1',
-     streams: [{ streamType: 'Counter', repository, stateCache, replay, sample }],
+     streamId: () => streamId(STREAM_PREFIXES_COUNTER.counter, '1'),
+     streams: [{ streamType: STREAM_TYPES_COUNTER.Counter, repository, stateCache, replay, sample }],
      projections: { projections, snapshot },
      views: [{ name, view, params, seed, check }],
    });
@@ -788,8 +788,8 @@ Shared surface (from `.`, usable in module and client code):
 streamId(prefix, key);  // '<prefix>-<key>'; validates shape and the 256-character limit
 ```
 
-App-owned constants (`STREAM_TYPES_ORDER`, `EVENT_TYPES_ORDER`, `TABLES_ORDER`, `VIEWS_ORDER`) stay
-in each domain's `constants.ts`, not in the core package.
+App-owned constants (`STREAM_TYPES_*`, `STREAM_PREFIXES_*`, `EVENT_TYPES_*`, `TABLES_*`, `VIEWS_*`,
+`ROWS_*`) stay in each domain's `constants.ts`, not in the core package.
 
 Client surface:
 
@@ -866,7 +866,7 @@ Node-only and planned for M7. It owns the lifecycle unit tests cannot:
 
 ```ts
 const env = await createIntegrationEnv({
-  server: 'local' | url,
+  server: 'local', // or an explicit server URL
   database: `my-app-test-${nonce}`,
   modulePath: 'spacetimedb',                  // publishes with --delete-data
 });
@@ -879,7 +879,9 @@ await env.dispose();
 ```
 
 - Readiness check, publish, identities, SQL result parsing, subscription convergence, teardown.
-- Connect-only: it never spawns `spacetime start` (see §17.5).
+- For `server: 'local'`, it spawns and owns `spacetime start --in-memory --non-interactive` and stops
+  that child in `dispose()`. For an explicit URL, it connects to that server and does not stop a
+  process it did not start (see §17).
 - No `vitest` dependency; callable from any Node test runner or a plain script.
 - Must cover: two identities appending concurrently; live subscription convergence; parameterized
   views with literal arguments; cache hit versus replay on a long stream; anonymous view access; and
@@ -978,7 +980,7 @@ here so they can be polished before any code is written.
 
 ---
 
-## 17. Open decisions
+## 17. Decisions
 
 Resolved in v1:
 
@@ -987,12 +989,11 @@ Resolved in v1:
    designed and spiked (additive variants migrate automatically) but not shipped.
 3. **Aggregate form:** both shipped — `Aggregate` class plus `defineAggregate` functional helper.
 4. **State-cache default:** app-owned typed table per aggregate kind. No shared generic JSON table.
+5. **Integration kit lifecycle.** For `server: 'local'`, `createIntegrationEnv` spawns and owns
+   `spacetime start --in-memory --non-interactive`, waits for readiness, and stops that child in
+   `dispose()`. For an explicit URL, it connects to the external server and never stops a process it
+   did not start. The kit is Node-only and planned for M7.
+6. **Contract-test runner.** Keep `vitest` as an optional peer for the contract suite; the rest of
+   `stdb-es/testing` stays runner-agnostic.
 
-Still open:
-
-5. **Integration kit lifecycle.** Connect only to an already-running server, or optionally spawn
-   `spacetime start --in-memory`? Recommendation: connect-only in v1. Spawning is a convenience for
-   a later `startServer()` helper behind an explicit option, so CI keeps one owner of the process.
-6. **Contract-test runner.** Keep the optional `vitest` peer, or split assertions into a runner-
-   agnostic core plus a thin `vitest` adapter? Recommendation: keep `vitest` for v1; the rest of the
-   testing entry stays runner-agnostic.
+Still open: none at this time.
