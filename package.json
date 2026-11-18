@@ -1,7 +1,7 @@
 {
   "name": "stdb-es",
   "version": "0.0.0",
-  "description": "Event sourcing for SpacetimeDB: event streams, optimistic concurrency, aggregates, state caches, and live read models.",
+  "description": "Add event sourcing to your TypeScript SpacetimeDB app with append-only streams, safe retries, replayable state, and live read models.",
   "license": "MIT",
   "author": "gervel@jscraftsman.com",
   "type": "module",
