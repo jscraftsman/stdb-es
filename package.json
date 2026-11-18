@@ -57,7 +57,8 @@
     "example:set:counter:build": "npm run build && spacetime build -p examples/sets/counter-with-frontend/spacetimedb",
     "example:set:counter:generate": "spacetime generate --lang typescript --out-dir examples/sets/counter-with-frontend/web/src/generated --module-path examples/sets/counter-with-frontend/spacetimedb",
     "example:set:counter:typecheck": "tsc -p examples/sets/counter-with-frontend/spacetimedb/tsconfig.json --noEmit && tsc -p examples/sets/counter-with-frontend/web/tsconfig.json --noEmit",
-    "example:set:counter:publish": "npm run example:set:counter:build && npm run example:set:counter:generate && npm run example:set:counter:typecheck && spacetime publish stdb-es-counter-with-frontend -s local -p examples/sets/counter-with-frontend/spacetimedb --delete-data=always -y",
+    "example:set:counter:publish-clean": "npm run example:set:counter:build && npm run example:set:counter:generate && npm run example:set:counter:typecheck && spacetime publish stdb-es-counter-with-frontend -s local -p examples/sets/counter-with-frontend/spacetimedb --delete-data=always -y",
+    "example:set:counter:publish": "npm run example:set:counter:build && npm run example:set:counter:generate && npm run example:set:counter:typecheck && spacetime publish stdb-es-counter-with-frontend -s local -p examples/sets/counter-with-frontend/spacetimedb",
     "example:set:counter:start": "npm run example:set:counter:publish && npm --prefix examples/sets/counter-with-frontend/web run dev",
     "smoke": "npm run example:publish:fresh && node scripts/smoke-example.mjs",
     "prepublishOnly": "npm run clean && npm run build && npm test"
