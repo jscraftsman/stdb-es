@@ -8,7 +8,7 @@ SpacetimeDB is the whole backend. The module is the application server, reducers
 and views are the client read path. `stdb-es` adds the event-sourcing half without asking you to run
 a second database, a message broker, or a separate read-model store.
 
-> **Status: 0.1.0, pre-release.** The API may change. Requires `spacetimedb >= 2.15 < 3`.
+> **Status: 0.1.1, pre-release.** The API may change. Requires `spacetimedb >= 2.15 < 3`.
 > JSON event payloads are the only implemented mode; typed-enum payloads are designed but not
 > shipped yet. TypeScript server modules only.
 
