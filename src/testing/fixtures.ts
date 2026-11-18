@@ -1,4 +1,5 @@
 import type { EncodedEvent } from '../server/index.js';
+import { ids } from './ids.js';
 
 /** Builds one wire event with a JSON payload. */
 export function wireEvent(eventId: string, eventType: string, payload: unknown): EncodedEvent {
@@ -15,8 +16,10 @@ export function wireEvents(
   prefix: string,
   events: ReadonlyArray<readonly [eventType: string, payload: unknown]>,
 ): EncodedEvent[] {
+  if (events.length === 0) return [];
+  const eventIds = ids(prefix, events.length);
   return events.map(([eventType, payload], index) =>
-    wireEvent(`${prefix}-${index + 1}`, eventType, payload),
+    wireEvent(eventIds[index]!, eventType, payload),
   );
 }
 

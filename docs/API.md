@@ -14,7 +14,7 @@ available yet.
 | `stdb-es` | module or client | Stable error codes, error helpers, the `streamId` helper, protocol types and constants |
 | `stdb-es/server` | SpacetimeDB module only | Tables, append/read, aggregates, repositories, projections, views, doctor |
 | `stdb-es/client` | browser or Node client | Registry, encoding, append client, row helpers, subscription query and event-row helpers |
-| `stdb-es/testing` | Vitest tests | Harness shim, fixtures, contract suite |
+| `stdb-es/testing` | offline unit tests | Module/client helpers, harness shim, fixtures, contract suite |
 
 Conventions used below:
 
@@ -375,9 +375,29 @@ subscription.unsubscribe();
 
 ## 4. `stdb-es/testing` — offline test tooling
 
-Imports `vitest` at runtime, so install it as a dev dependency.
+`runEventStoreContractTests` imports `vitest` at runtime, so install it as a dev dependency when using
+the contract suite. The other tooling in this entry is runner-agnostic. See the
+[unit testing guide](unit%20testing.md) for task-oriented examples.
 
-### 4.1 Harness shim and fixtures
+### 4.1 Module and client helpers
+
+| Symbol | Purpose | Inputs | Output |
+| --- | --- | --- | --- |
+| `createModuleTest(spacetimedb, moduleExports, options?)` | Creates a fresh offline module test | The module's default schema export, its reducer/view exports, and optional `auth`, `clock`, `rngSeed`, `moduleIdentity` | `ModuleTest` with `tx`, `call`, `view`, `anonymousView`, `harness`, `auth`, and `moduleExports` |
+| `ids(prefix, count)` | Builds deterministic event ids | Non-empty `prefix`; positive safe integer `count` | `string[]` of `${prefix}-1` … `${prefix}-count`; throws on invalid input or ids over 128 characters |
+| `expectAppendError(fn, code)` | Asserts a stable store failure | A sync or async callback and an `EsErrorCode` | `void` for sync callbacks; `Promise<void>` for async ones. Throws a plain `Error` when no error or a different code occurs. |
+| `createFakeAppend(options?)` | Fakes the generated append binding | Optional `result` or `error`; use `nextResult`/`nextError` for sequences | `FakeAppend` call function with `calls`, `lastCall`, `nextResult`, `nextError`, and `clear` |
+
+Every context passed to `tx`, `call`, `view`, or `anonymousView` is wrapped with `withIndexRanges`, so
+the 2.15 harness behaves like the real host. `tx` commits when the body returns and rolls back when it
+throws. `call` looks up the reducer by export name. `view` and `anonymousView` call the supplied view
+function directly with the matching harness context type.
+
+`createFakeAppend` records one shallow snapshot per call, including a copied `events` array. Queued
+replies from `nextResult`/`nextError` are consumed first; afterwards the configured `result`/`error`
+(default: resolve `undefined`) applies. `clear()` empties `calls` but keeps the queue.
+
+### 4.2 Harness shim and fixtures
 
 | Symbol | Purpose | Inputs | Output |
 | --- | --- | --- | --- |
@@ -389,7 +409,7 @@ Imports `vitest` at runtime, so install it as a dev dependency.
 `withIndexRanges` works around a duplicate `Range` class inside the 2.15 module test harness. The
 production host is unaffected; do not add the wrapper to module code.
 
-### 4.2 Contract suite
+### 4.3 Contract suite
 
 | Type | Purpose | Fields |
 | --- | --- | --- |
@@ -418,7 +438,6 @@ Do not import these; they have no runtime implementation yet.
 
 | Item | Milestone | Planned purpose |
 | --- | --- | --- |
-| `createModuleTest`, `ids`, `expectAppendError`, `createFakeAppend` | M6 | One-import consumer unit-test helpers for module contexts, ids, error assertions, and client append fakes |
 | `stdb-es/testing/integration` with `createIntegrationEnv` | M7 | Node-only publish/call/SQL/connect/wait/dispose lifecycle; local mode spawns and owns `spacetime start --in-memory --non-interactive`, URL mode connects to an external server |
 | Typed-enum payload mode | later | Schema-enforced event unions; currently only designed and spiked |
 | Async projection pump, `es_checkpoint`, dead-letter, scheduled rebuild | M14 (v1.1) | Offload expensive projections without changing the event model |

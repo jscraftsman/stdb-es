@@ -1662,6 +1662,9 @@ appends get ids from `crypto.randomUUID()` (or an injected generator), while `Re
 
 ## Part 3 — Testing
 
+The complete standalone reference for this layer is the [Unit testing guide](unit%20testing.md).
+The sections below keep the app-walkthrough examples in context.
+
 ### 3.1 Test layers
 
 | Layer | Where it runs | Tooling | Purpose |
@@ -1684,10 +1687,11 @@ codes.
 
 ### 3.3 App module unit tests
 
-`stdb-es/testing` currently ships `withIndexRanges`, `wireEvent`, `wireEvents`, and `versions`, plus
-the contract suite. `withIndexRanges` works around a `Range` class mismatch in the
-`spacetimedb@2.15.0` test harness; use it on every reducer or view context in tests. The real host is
-unaffected.
+`stdb-es/testing` ships `createModuleTest`, `ids`, `expectAppendError`, `createFakeAppend`,
+`withIndexRanges`, `wireEvent`, `wireEvents`, `versions`, and the contract suite. The manual harness
+example below shows what `createModuleTest` wraps for you: it applies `withIndexRanges` to every
+context. That shim works around a `Range` class mismatch in the `spacetimedb@2.15.0` test harness;
+the real host is unaffected.
 
 ```ts
 // spacetimedb/src/domains/counter/reducers.test.ts
@@ -1850,8 +1854,9 @@ it('reuses ids when a batch is retried', async () => {
 });
 ```
 
-**Planned in M6:** `createModuleTest`, `ids`, `expectAppendError`, and `createFakeAppend` will reduce
-the setup above to a one-import helper. They are not shipped yet.
+The M6 helpers reduce the setup above to one import. See the
+[Unit testing guide](unit%20testing.md#5-client-tests-with-a-fake-append) for a `createFakeAppend`
+example and [the API reference](API.md#41-module-and-client-helpers) for exact signatures.
 
 ### 3.6 Integration tests
 

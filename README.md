@@ -17,6 +17,7 @@ a second database, a message broker, or a separate read-model store.
 - [Package Usage Guide](docs/usage-guide.md) — a from-scratch full-stack project, module code, client
   code, testing, and a simple React frontend, including domain-separated layouts.
 - [API reference](docs/API.md) — every shipped export, its inputs, and its outputs.
+- [Unit testing guide](docs/unit%20testing.md) — offline module and client tests, fakes, and assertions.
 - [SQL recipes](docs/sql-recipes.md) — owner-only inspection and repair queries.
 - [Counter with frontend](examples/sets/counter-with-frontend/README.md) — runnable full-stack set.
 - [Design record](docs/event-sourcing-plan.md) — decisions, rejected alternatives, and milestones.
@@ -539,7 +540,8 @@ rows.
 
 ### Testing
 
-`stdb-es/testing` runs your real module through SpacetimeDB's module test harness:
+For a step-by-step offline testing workflow, see the [unit testing guide](docs/unit%20testing.md).
+`stdb-es/testing` can also run your real module through SpacetimeDB's module test harness:
 
 ```ts
 import { streamId } from 'stdb-es';
@@ -641,13 +643,13 @@ the head counter, and every projection.
 | `stdb-es` | Error codes, the `streamId(prefix, key)` helper, and protocol types (safe from client and server code) |
 | `stdb-es/server` | Tables, append/read, repository, projections, view factories, doctor |
 | `stdb-es/client` | Event registry, encoding, append client, subscription query helpers, subscription bridge |
-| `stdb-es/testing` | Contract tests, fixtures, and the `withIndexRanges` harness shim |
+| `stdb-es/testing` | Module/client test helpers, deterministic ids, append-error assertions, fakes, fixtures, contract tests, and the `withIndexRanges` harness shim |
 
 ## Development
 
 ```bash
 npm install
-npm test              # 93 tests, in-memory harness
+npm test              # 103 tests, in-memory harness
 npm run build         # tsc -> dist (declarations included)
 npm run check:pack    # install a packed tarball in a fresh workspace app
 npm run smoke         # publish the example and run the live smoke test

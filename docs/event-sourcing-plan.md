@@ -176,9 +176,12 @@ stdb-es/
       index.ts
     testing/
       harness.ts          # withIndexRanges workaround
-      fixtures.ts         # wire rows, deterministic ids, assertions
+      fixtures.ts         # wire rows and version helpers
+      ids.ts              # deterministic, retry-safe event ids
+      assertions.ts       # expectAppendError (runner-agnostic)
+      fake-append.ts      # records appends for client unit tests
+      module-test.ts      # harness + Range shim convenience wrapper
       contracts.ts        # runEventStoreContractTests (optional vitest peer)
-      fake-append.ts      # planned: records appends for client unit tests
       integration/        # planned: Node-only publish/call/sql/subscribe harness
       index.ts
   examples/
@@ -191,6 +194,7 @@ stdb-es/
       schema-evolution/
   docs/
     usage-guide.md        # module, client, testing, frontend (R4)
+    unit testing.md       # dedicated offline unit-testing guide (R2/R4)
     API.md                # complete consumer API reference (R6)
     sql-recipes.md        # owner-only inspection and repair
     event-sourcing-plan.md
@@ -849,9 +853,7 @@ suite is dogfooded (`test/contracts.test.ts`) so consumer tooling cannot rot.
 
 ### 14.2 Layer 2 — consumer unit tests (`stdb-es/testing`, R2)
 
-Shipped: `runEventStoreContractTests`, `wireEvents`, and `withIndexRanges`.
-
-Planned for M6, so a consumer can test their module and client without a server:
+Shipped: `runEventStoreContractTests`, `wireEvents`, `withIndexRanges`, and the M6 kit:
 
 ```ts
 createModuleTest(spacetimedb, { ... });     // harness transaction + Range wrapper
@@ -860,9 +862,13 @@ expectAppendError(fn, ES_ERROR.EXPECTED_VERSION_MISMATCH);
 createFakeAppend({ result?, error? });      // client tests: records calls, returns canned replies
 ```
 
+`createModuleTest` returns `tx`, `call`, `view`, `anonymousView`, and the underlying harness. All
+contexts are shimmed automatically. `createFakeAppend` supports queued `nextResult`/`nextError`
+replies for timeout-and-retry sequences. The task-oriented guide lives in `docs/unit testing.md`.
+
 Rules: no network, no Node built-ins, no server. Runner-agnostic except the optional `vitest` peer
-that the contract suite imports. A consumer should need one import and roughly ten lines for a first
-meaningful test.
+that the contract suite imports. A consumer needs one import and roughly ten lines for a first
+meaningful test; `test/unit-kit.test.ts` dogfoods the kit.
 
 ### 14.3 Layer 3 — consumer integration tests (`stdb-es/testing/integration`, R3)
 
@@ -924,7 +930,7 @@ Actions run has not yet been observed.
 | M3 | Aggregate, Repository, state cache + version guard, registry codec | 07–08 green; cache parity test green | done |
 | M4 | Inline projections + `rebuildBatch` + view factories + contract tests + **core unit-test floor** | 09 green; drift + smoke green; every public export covered offline | done |
 | M5 | Shared `streamId` helper, client SDK completion (subscription helper), npm metadata, CI gate | `streamId` shape/limit/error tests green; 8 subscription-helper tests green (93 total); CI workflow runs build + typecheck + unit + pack + smoke; fresh-app `npm pack` check passed locally | done |
-| M6 | **Consumer unit-test kit** (`stdb-es/testing`) | fake append, id helpers, and failure assertions shipped; a one-import, ~10-line consumer test needs no server | planned |
+| M6 | **Consumer unit-test kit** (`stdb-es/testing`) | fake append, id helpers, module-test wrapper, and failure assertions shipped; 10 kit tests pass offline; a one-import, ~10-line consumer test needs no server | done |
 | M7 | **Consumer integration-test kit** (`stdb-es/testing/integration`) | one call creates, publishes, and tears down a disposable database; concurrency, subscription, and anonymous-view cases green locally and remotely | planned |
 | M8 | **Developer documentation**: `docs/usage-guide.md`, `docs/API.md`, README glossary | all four guide parts present; every shipped export documented with inputs/outputs; README glossary links to both documents | documentation done |
 

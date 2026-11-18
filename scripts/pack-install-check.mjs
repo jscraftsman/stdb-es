@@ -74,7 +74,9 @@ try {
       env: npmEnv,
     }),
   );
-  const filename = packed[0]?.filename;
+  // npm 10 reports an array; npm 11 reports an object keyed by package name.
+  const packedEntries = Array.isArray(packed) ? packed : Object.values(packed);
+  const filename = packedEntries[0]?.filename;
   if (!filename) throw new Error('npm pack did not report a tarball');
   const dependency = pathToFileURL(path.join(temp, filename)).href;
 
@@ -114,9 +116,13 @@ try {
     [
       "import { streamId } from 'stdb-es';",
       "import { ANY_VERSION } from 'stdb-es/server';",
+      "import { createFakeAppend, createModuleTest, ids } from 'stdb-es/testing';",
       '',
       "export const id = streamId('check', '1');",
       'export const version = ANY_VERSION;',
+      "export const eventIds = ids('check', 2);",
+      'export const append = createFakeAppend();',
+      'export { createModuleTest };',
       '',
     ].join('\n'),
   );
