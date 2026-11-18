@@ -1,5 +1,6 @@
 import { schema, t, table } from 'spacetimedb/server';
 import { esTables, makeAppendReducer, readStream, type CtxOf } from 'stdb-es/server';
+import { EVENT_TYPES_COUNTER, TABLES_COUNTER } from './domains/counter/constants.js';
 
 /**
  * App-owned state cache. This is *not* the source of truth: `es_event` is.
@@ -10,7 +11,7 @@ import { esTables, makeAppendReducer, readStream, type CtxOf } from 'stdb-es/ser
  * falls back to replaying the log.
  */
 const counterState = table(
-  { name: 'counter_state' },
+  { name: TABLES_COUNTER.state },
   {
     streamId: t.string().primaryKey(),
     version: t.u32(),
@@ -23,18 +24,18 @@ export default spacetimedb;
 
 /** Domain event payloads as they appear in the `data` column. */
 type CounterEvent =
-  | { kind: 'Incremented'; by: number }
-  | { kind: 'Decremented'; by: number }
-  | { kind: 'Reset' };
+  | { kind: typeof EVENT_TYPES_COUNTER.Incremented; by: number }
+  | { kind: typeof EVENT_TYPES_COUNTER.Decremented; by: number }
+  | { kind: typeof EVENT_TYPES_COUNTER.Reset };
 
 function evolve(value: bigint, payload: string): bigint {
   const event = JSON.parse(payload) as CounterEvent;
   switch (event.kind) {
-    case 'Incremented':
+    case EVENT_TYPES_COUNTER.Incremented:
       return value + BigInt(event.by);
-    case 'Decremented':
+    case EVENT_TYPES_COUNTER.Decremented:
       return value - BigInt(event.by);
-    case 'Reset':
+    case EVENT_TYPES_COUNTER.Reset:
       return 0n;
   }
 }
@@ -47,7 +48,11 @@ function replayValue(ctx: CtxOf<typeof spacetimedb>, streamId: string): bigint {
 }
 
 export const appendEvents = makeAppendReducer(spacetimedb, {
-  eventTypes: ['Incremented', 'Decremented', 'Reset'],
+  eventTypes: [
+    EVENT_TYPES_COUNTER.Incremented,
+    EVENT_TYPES_COUNTER.Decremented,
+    EVENT_TYPES_COUNTER.Reset,
+  ],
 
   // `ctx` is inferred from the schema above, so app tables are fully typed.
   // This runs inside the append transaction, after the events are written, and
@@ -78,7 +83,7 @@ export const appendEvents = makeAppendReducer(spacetimedb, {
  * scoped to a caller, use `spacetimedb.view` keyed on `ctx.sender` instead.
  */
 export const counterSummary = spacetimedb.anonymousView(
-  { name: 'counter_summary', public: true },
+  { name: TABLES_COUNTER.summary, public: true },
   t.array(counterState.rowType),
   (ctx) => [...ctx.db.counterState.iter()],
 );

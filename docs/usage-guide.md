@@ -995,6 +995,11 @@ explicit URL it will connect to that server without stopping a process it did no
 
 ## Part 4 — Simple React frontend
 
+A runnable version of this part lives in
+[`examples/sets/counter-with-frontend`](../examples/sets/counter-with-frontend/README.md). Run
+`npm run example:set:counter:start` from the repository root to publish the module and open it with
+Vite.
+
 ### 4.1 Setup
 
 Generate TypeScript bindings from the published module with the SpacetimeDB CLI, then install the

@@ -922,12 +922,17 @@ gate. Before any release, `npm pack` must install into a fresh workspace app.
 M1 is the keystone: if dedupe/version/position ordering is wrong, everything downstream inherits it.
 M6 comes before M7: the fakes define the seams the integration kit exercises.
 
-### 15.2 Example sets (planned — implementation not started)
+### 15.2 Example sets (one implemented baseline; M9–M13 planned)
 
 Each set is one vertical slice: **publishable module app code + a simple React client with a basic
 UI**. The existing `examples/counter` remains the basic warm-up; these sets deliberately start at
 intermediate concepts. Keep each set small: one or two streams per domain, one state table, one read
 model, one screen, one contract test file. Do not re-teach basic append/read mechanics in every set.
+
+The baseline set `examples/sets/counter-with-frontend` is implemented. It demonstrates the full
+loop — app-owned constants, `streamId`, client event registry, generic append reducer, state cache
+with replay-on-miss, anonymous view subscription, and a one-screen React UI — with
+`npm run example:set:counter:start`. It does not replace any of the concept-focused sets below.
 
 | # | Example set | Concept focus | Module app code | Simple React UI | Explicitly out of scope |
 | --- | --- | --- | --- | --- | --- |
@@ -946,8 +951,8 @@ Each example milestone exits only when all of the following are true:
 4. The React client builds and demonstrates the named concept with visible UI state.
 5. A short README in the set explains what it teaches and what it deliberately omits.
 
-The implementation of M9–M13 is **paused pending an explicit go signal**. Only their scope is recorded
-here so they can be polished before any code is written.
+The implementation of M9–M13 remains **paused pending an explicit go signal**. Only their scope is
+recorded here; the implemented full-stack baseline does not start that sequence.
 
 ### 15.3 Deferred
 

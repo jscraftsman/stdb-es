@@ -1,0 +1,75 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #18212f;
+  background: #f5f7fa;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  max-width: 32rem;
+  margin: 4rem auto;
+  padding: 0 1rem;
+}
+
+header p {
+  color: #52606d;
+}
+
+.panel {
+  padding: 1.5rem;
+  border: 1px solid #d7dfe8;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 4px 16px rgb(24 33 47 / 6%);
+}
+
+.value {
+  margin: 0;
+  font-size: 3rem;
+  font-weight: 700;
+}
+
+.meta {
+  margin-top: 0.25rem;
+  color: #52606d;
+  font-size: 0.875rem;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 1.25rem;
+}
+
+input {
+  padding: 0.5rem;
+  border: 1px solid #bcc6d0;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+button {
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  border-radius: 6px;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+  font: inherit;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

@@ -18,6 +18,7 @@ a second database, a message broker, or a separate read-model store.
   frontend, including domain-separated project layouts.
 - [API reference](docs/API.md) — every shipped export, its inputs, and its outputs.
 - [SQL recipes](docs/sql-recipes.md) — owner-only inspection and repair queries.
+- [Counter with frontend](examples/sets/counter-with-frontend/README.md) — runnable full-stack set.
 - [Design record](docs/event-sourcing-plan.md) — decisions, rejected alternatives, and milestones.
 
 ## Design rules
@@ -634,7 +635,13 @@ npm run build         # tsc -> dist (declarations included)
 npm run smoke         # publish the example and run the live smoke test
 ```
 
-The smoke test needs a local server:
+To run the full-stack set (React + module) against the already-running local server:
+
+```bash
+npm run example:set:counter:start   # publishes fresh, generates bindings, starts Vite on :5173
+```
+
+The smoke and full-stack commands assume a local server on `127.0.0.1:3000`:
 
 ```bash
 spacetime start --in-memory --non-interactive   # 127.0.0.1:3000
@@ -642,16 +649,19 @@ spacetime start --in-memory --non-interactive   # 127.0.0.1:3000
 
 `spacetime build` may print `tsc not found in node_modules` because npm workspaces hoist TypeScript
 to the repository root, so the CLI cannot find a per-module `tsc`. The build still succeeds, but the
-CLI has skipped its own type check. `npm run example:typecheck` runs that check explicitly and is
-part of `example:build`, `example:publish`, and `smoke`.
+CLI has skipped its own type check. `npm run example:typecheck` and
+`npm run example:set:counter:typecheck` run that check explicitly and are part of their respective
+build/publish/start scripts.
 
 It republishes `stdb-es-counter`, appends through the generated reducer, and asserts against
 `es_stream` plus the app-owned names in `TABLES_COUNTER.state` and `VIEWS_COUNTER.summary`
 (`counter_state` and `counter_summary`) — including a stale-version rejection, an idempotent retry,
 and a cache row that is deleted and then rebuilt by replay.
 
-The worked example lives in `examples/counter`. The design record, including the migration spike
-results and the rejected alternatives, is in [docs/event-sourcing-plan.md](docs/event-sourcing-plan.md).
+The module-only example lives in `examples/counter`; the runnable full-stack set lives in
+[`examples/sets/counter-with-frontend`](examples/sets/counter-with-frontend/README.md). The design
+record, including the migration spike results and the rejected alternatives, is in
+[docs/event-sourcing-plan.md](docs/event-sourcing-plan.md).
 
 ## License
 
