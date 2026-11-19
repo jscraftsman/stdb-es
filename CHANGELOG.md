@@ -1,3 +1,13 @@
+## 0.3.0 (2026-11-19)
+
+### Feat
+
+- **IntegrationTestKit**: Completed M7, added integration testing kit and updated documentation
+
+### Fix
+
+- **IntegrationTest**: Attempt 1 to fix pipeline issue for integration testing
+
 ## 0.2.0 (2026-11-18)
 
 ### Feat
