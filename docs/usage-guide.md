@@ -1897,7 +1897,8 @@ try {
 
 The [Integration testing guide](integration%20testing.md#2-one-test-local-server) covers the full
 lifecycle, external servers, subscription clients, anonymous views, and troubleshooting. The
-repository also dogfoods the kit with `npm run smoke:integration`, which runs in the CI gate.
+repository also dogfoods the kit with `npm run smoke:integration` and the consumer-style
+`npm run example:set:counter:test:integration` suite; both run in the CI gate.
 
 ---
 

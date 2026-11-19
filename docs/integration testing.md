@@ -236,6 +236,10 @@ This kit covers real-server lifecycle, network reducers, SQL, and subscriptions.
 - the offline [Unit testing guide](unit%20testing.md) for reducers, aggregates, and fake appends;
 - the [Usage guide](usage-guide.md#36-integration-tests) for library-level smoke recipes;
 - the maintainer `npm run smoke` and `npm run smoke:integration` scripts, which dogfood this kit in
-  the repository CI gate.
+  the repository CI gate;
+- the runnable counter example set, whose
+  [`integration/`](../examples/sets/counter-with-frontend/integration/counter.integration.test.ts)
+  project shows a consumer using `createIntegrationEnv` with app-owned constants; run it with
+  `npm run example:set:counter:test:integration`.
 
 M9–M13 example sets remain out of scope. This guide documents the shipped M7 tool only.

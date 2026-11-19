@@ -130,6 +130,9 @@ jobs:
       - name: Integration kit smoke
         run: npm run smoke:integration
 
+      - name: Counter example integration tests
+        run: npm run example:set:counter:test:integration
+
       - name: Stop disposable local server
         if: always()
         run: |

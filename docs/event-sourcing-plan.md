@@ -902,8 +902,9 @@ await env.dispose();
   stale-version rejection end to end.
 - Status: shipped. `src/testing/integration/` is the consumer tool; `scripts/integration-kit-smoke.mjs`
   dogfoods local and external URL modes, and `test/integration-kit.test.ts` covers the pure helpers
-  offline. The guide lives in `docs/integration testing.md`. The older `scripts/smoke-example.mjs`
-  remains the library-specific full recovery smoke.
+  offline. `examples/sets/counter-with-frontend/integration/` is the consumer-style showcase suite.
+  The guide lives in `docs/integration testing.md`. The older `scripts/smoke-example.mjs` remains the
+  library-specific full recovery smoke.
 
 ### 14.4 Layer 4 — maintainer live smoke
 

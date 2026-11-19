@@ -660,6 +660,7 @@ npm run build         # tsc -> dist (declarations included)
 npm run check:pack    # install a packed tarball in a fresh workspace app
 npm run smoke         # publish the example and run the live smoke test
 npm run smoke:integration # dogfood stdb-es/testing/integration on a disposable server
+npm run example:set:counter:test:integration # consumer-style integration tests for the example set
 ```
 
 To run the full-stack set (React + module) against the already-running local server:

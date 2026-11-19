@@ -69,9 +69,31 @@ for the in-memory datastore, and the client keeps it so importing the `stdb-es/t
 resolvable in Node. No running server is involved. See the
 [unit testing guide](../../../docs/unit%20testing.md) for the full API.
 
-For the real-server lifecycle, the repository root runs `npm run smoke:integration`. It dogfoods
-`stdb-es/testing/integration` with this module, including the parameterized `stream_events` view;
-see the [integration testing guide](../../../docs/integration%20testing.md).
+## Test it against a server
+
+The example also ships a Node-only integration suite at `integration/`. It uses
+`stdb-es/testing/integration` to publish this module to a disposable in-memory database, then exercises
+the real write and read paths:
+
+```bash
+npm run example:set:counter:test:integration
+```
+
+The suite covers:
+
+- `createIntegrationEnv` creating and tearing down a disposable database in one lifecycle;
+- app-owned `streamId` and constants driving a real `append_events` call;
+- owner SQL over the private `es_event` table and anonymous SQL over `counter_summary`;
+- stale-version rejection with a fresh event id;
+- live subscription convergence for both the anonymous view and the parameterized `stream_events`
+  view built with `viewQuery`;
+- a second environment connecting through an explicit server URL without stopping the shared server.
+
+No pre-running server is required: local mode spawns and owns `spacetime start --in-memory
+--non-interactive`. The suite is separate from the offline Vitest projects because it needs Node
+built-ins and a real server. See the
+[integration testing guide](../../../docs/integration%20testing.md) for the full API. The repository
+root also runs `npm run smoke:integration`, a broader dogfood of the same kit.
 
 ## What it demonstrates
 
@@ -87,11 +109,17 @@ see the [integration testing guide](../../../docs/integration%20testing.md).
   those files from `stdb-es` itself.
 - Offline tests that exercise the real reducer and the real client store through
   `stdb-es/testing`, with no server in the loop.
+- Integration tests that publish this same module and exercise reducers, SQL, and subscriptions
+  through `stdb-es/testing/integration`.
 
 ## Layout
 
 ```text
 counter-with-frontend/
+  integration/
+    counter.integration.test.ts       # createIntegrationEnv: publish, call, SQL, subscriptions
+    vitest.config.ts                  # Node-only integration project
+    tsconfig.json
   spacetimedb/
     vitest.config.ts                 # in-memory module harness plugin
     src/
