@@ -1,6 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
 import { createServer } from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
 import { cliArgs, parseSqlResult, runCli } from './cli.js';
 import { CliIntegrationClient } from './client.js';
 import type { CreateIntegrationEnvOptions, IntegrationEnv } from './types.js';
@@ -70,9 +73,9 @@ function stopChild(child: ChildProcess, detached = false): Promise<void> {
  * Creates a disposable, real SpacetimeDB environment for consumer tests.
  *
  * With the default `server: 'local'` it spawns an in-memory standalone server
- * on a free port and owns that process until `dispose()`. An explicit URL or
- * CLI nickname reuses an existing server; the environment never stops a
- * process it did not start.
+ * on a free port with its own temporary data directory, and owns both until
+ * `dispose()`. An explicit URL or CLI nickname reuses an existing server; the
+ * environment never stops a process it did not start.
  */
 export async function createIntegrationEnv(
   options: CreateIntegrationEnvOptions = {},
@@ -80,59 +83,91 @@ export async function createIntegrationEnv(
   const cwd = options.cwd ?? process.cwd();
   const timeoutMs = options.timeoutMs ?? 120_000;
   const requestedServer = options.server ?? 'local';
+  const database = options.database ?? integrationDatabase();
+  const clients = new Set<CliIntegrationClient>();
 
   let serverArg = requestedServer;
   let ownedServer: ChildProcess | undefined;
+  let ownedDataDir: string | undefined;
   let serverLog = '';
   let serverFailure: Error | undefined;
+  let disposed = false;
 
-  if (requestedServer === 'local') {
-    const port = options.port ?? (await freePort());
-    serverArg = `http://127.0.0.1:${port}`;
-    const child = spawn(
-      'spacetime',
-      ['start', '--in-memory', '--non-interactive', '-l', `127.0.0.1:${port}`],
-      { cwd, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' },
+  const cleanup = async (): Promise<void> => {
+    await Promise.all(
+      [...clients].map((client) => client.close().catch(() => undefined)),
     );
-    ownedServer = child;
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout?.on('data', (chunk: string) => {
-      serverLog += chunk;
-    });
-    child.stderr?.on('data', (chunk: string) => {
-      serverLog += chunk;
-    });
-    child.on('error', (error) => {
-      serverFailure = new Error(`Could not start the local SpacetimeDB server: ${error.message}`);
-    });
-    child.on('exit', (code, signal) => {
-      if (code !== 0 && signal !== 'SIGTERM') {
-        serverFailure = new Error(
-          `Local SpacetimeDB server exited with ${signal ?? code}:\n${serverLog}`,
-        );
-      }
-    });
+    clients.clear();
 
-    await waitFor(
-      async () => {
-        if (serverFailure) throw serverFailure;
-        try {
-          const response = await fetch(`${serverArg}/v1/health`);
-          return response.ok;
-        } catch {
-          return false;
-        }
-      },
-      { timeoutMs, intervalMs: 100, description: `local server ${serverArg}` },
-    );
-  } else if (isUrl(requestedServer)) {
-    serverArg = httpUrl(requestedServer);
-  }
-
-  const database = options.database ?? integrationDatabase();
+    if (!options.keepDatabase) {
+      // A disposable server disappears on stop, so a failed delete is not a
+      // reason to abort teardown.
+      await runCli(['delete', '-s', serverArg, database, '-y'], cwd).catch(() => undefined);
+    }
+    if (ownedServer && !options.keepServer) await stopChild(ownedServer);
+    // The standalone server takes a pid lock inside its data directory. Each
+    // owned server gets its own directory so parallel servers (including an
+    // existing CI server on :3000) never contend for the same lock file.
+    if (ownedDataDir && !options.keepServer) {
+      fs.rmSync(ownedDataDir, { recursive: true, force: true });
+    }
+  };
 
   try {
+    if (requestedServer === 'local') {
+      const port = options.port ?? (await freePort());
+      serverArg = `http://127.0.0.1:${port}`;
+      ownedDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stdb-es-integration-'));
+
+      const child = spawn(
+        'spacetime',
+        [
+          'start',
+          '--in-memory',
+          '--non-interactive',
+          '--data-dir',
+          ownedDataDir,
+          '-l',
+          `127.0.0.1:${port}`,
+        ],
+        { cwd, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' },
+      );
+      ownedServer = child;
+      child.stdout.setEncoding('utf8');
+      child.stderr.setEncoding('utf8');
+      child.stdout?.on('data', (chunk: string) => {
+        serverLog += chunk;
+      });
+      child.stderr?.on('data', (chunk: string) => {
+        serverLog += chunk;
+      });
+      child.on('error', (error) => {
+        serverFailure = new Error(`Could not start the local SpacetimeDB server: ${error.message}`);
+      });
+      child.on('exit', (code, signal) => {
+        if (code !== 0 && signal !== 'SIGTERM') {
+          serverFailure = new Error(
+            `Local SpacetimeDB server exited with ${signal ?? code}:\n${serverLog}`,
+          );
+        }
+      });
+
+      await waitFor(
+        async () => {
+          if (serverFailure) throw serverFailure;
+          try {
+            const response = await fetch(`${serverArg}/v1/health`);
+            return response.ok;
+          } catch {
+            return false;
+          }
+        },
+        { timeoutMs, intervalMs: 100, description: `local server ${serverArg}` },
+      );
+    } else if (isUrl(requestedServer)) {
+      serverArg = httpUrl(requestedServer);
+    }
+
     if (options.publish !== false) {
       await runCli(
         [
@@ -149,10 +184,7 @@ export async function createIntegrationEnv(
       );
     }
 
-    const clients = new Set<CliIntegrationClient>();
-    let disposed = false;
-
-    return {
+    const env: IntegrationEnv = {
       server: serverArg,
       database,
       modulePath: options.modulePath ?? 'spacetimedb',
@@ -210,24 +242,14 @@ export async function createIntegrationEnv(
       async dispose() {
         if (disposed) return;
         disposed = true;
-
-        await Promise.all([...clients].map((client) => client.close()));
-        clients.clear();
-
-        if (!options.keepDatabase) {
-          // A disposable server disappears on stop, so a failed delete is not a
-          // reason to abort teardown.
-          await runCli(['delete', '-s', serverArg, database, '-y'], cwd).catch(() => undefined);
-        }
-        if (ownedServer && !options.keepServer) await stopChild(ownedServer);
+        await cleanup();
       },
     };
+
+    return env;
   } catch (error) {
     // A caller cannot dispose an environment that was never returned.
-    if (!options.keepDatabase) {
-      await runCli(['delete', '-s', serverArg, database, '-y'], cwd).catch(() => undefined);
-    }
-    if (ownedServer && !options.keepServer) await stopChild(ownedServer);
+    await cleanup();
     throw error;
   }
 }

@@ -436,8 +436,9 @@ resubmitting identical ids is a valid replay even when `expectedVersion` is stal
 ## 5. `stdb-es/testing/integration` — live integration tooling (Node-only)
 
 This entry owns a real server lifecycle and needs the SpacetimeDB CLI `2.15.0` on `PATH`. It has no
-`vitest` dependency. See the [integration testing guide](integration%20testing.md) for task-oriented
-examples.
+`vitest` dependency. In owned local mode the spawned server uses a unique temporary `--data-dir`, so
+it does not contend with another server's `spacetime.pid` lock. See the
+[integration testing guide](integration%20testing.md) for task-oriented examples.
 
 | Symbol | Purpose | Inputs | Output |
 | --- | --- | --- | --- |

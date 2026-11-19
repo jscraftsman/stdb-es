@@ -1017,9 +1017,10 @@ Resolved in v1:
 3. **Aggregate form:** both shipped — `Aggregate` class plus `defineAggregate` functional helper.
 4. **State-cache default:** app-owned typed table per aggregate kind. No shared generic JSON table.
 5. **Integration kit lifecycle.** For `server: 'local'`, `createIntegrationEnv` spawns and owns
-   `spacetime start --in-memory --non-interactive`, waits for readiness, and stops that child in
-   `dispose()`. For an explicit URL, it connects to the external server and never stops a process it
-   did not start. The kit is Node-only and shipped in M7.
+   `spacetime start --in-memory --non-interactive` with a unique temporary `--data-dir`, waits for
+   readiness, and stops that child in `dispose()`. The isolated directory avoids `spacetime.pid`
+   contention with other servers. For an explicit URL, it connects to the external server and never
+   stops a process it did not start. The kit is Node-only and shipped in M7.
 6. **Contract-test runner.** Keep `vitest` as an optional peer for the contract suite; the rest of
    `stdb-es/testing` stays runner-agnostic.
 

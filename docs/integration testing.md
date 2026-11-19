@@ -29,8 +29,10 @@ plain script.
 ## 2. One test, local server
 
 With the default `server: 'local'`, the kit spawns
-`spacetime start --in-memory --non-interactive` on a free port, waits for `/v1/health`, publishes,
-and stops the server in `dispose()`.
+`spacetime start --in-memory --non-interactive` on a free port with a unique temporary `--data-dir`,
+waits for `/v1/health`, publishes, and stops the server in `dispose()`. The isolated data directory
+gives the server its own `spacetime.pid` lock, so an existing local server (for example one already
+running on port 3000 in CI) cannot block startup. The directory is removed during teardown.
 
 ```ts
 // integration/counter.test.ts
@@ -209,9 +211,11 @@ Always use `try`/`finally` or an `afterEach` hook. `dispose()`:
 1. closes every client created by `connect()` (terminating their subscription processes);
 2. deletes the disposable database, ignoring failures because an in-memory local server may already
    be gone;
-3. stops the spawned server process tree in owned `'local'` mode.
+3. stops the spawned server process tree in owned `'local'` mode and removes its temporary data
+   directory.
 
-In external URL mode, step 2 still deletes the database, but the server keeps running.
+In external URL mode, steps 2–3 do not stop the shared server or delete anything outside the
+environment's own disposable database.
 
 Use `keepDatabase: true` or `keepServer: true` only while debugging. Do not leave a local server
 running in CI.
