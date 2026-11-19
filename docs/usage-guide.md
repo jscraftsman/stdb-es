@@ -14,9 +14,10 @@ For the complete signature of every export, see [API.md](API.md). For owner-only
 | `stdb-es/server` | module only | Tables, append/read helpers, repositories, projections, view factories, doctor helpers |
 | `stdb-es/client` | browser or Node client | Event registry, encoding, append client, subscription query helpers, subscription bridge |
 | `stdb-es/testing` | Vitest tests | Harness shim, wire fixtures, contract suite |
+| `stdb-es/testing/integration` | Node tests only | Disposable server lifecycle, CLI calls, SQL, subscriptions |
 
 > Never import `stdb-es/server` into browser code. Never import Node-only test tooling into a module
-> bundle. The client entry is browser-safe; the planned integration kit has its own Node-only entry.
+> bundle. The client entry is browser-safe; the integration kit has its own Node-only entry.
 
 New to the package? Start with **Part 0** below for a complete from-scratch project. Parts 1–4 then
 explain the individual pieces in more depth.
@@ -1671,8 +1672,9 @@ The sections below keep the app-walkthrough examples in context.
 | --- | --- | --- | --- |
 | Core package tests | offline | `npm test` | Library maintainers verify every shipped export |
 | Consumer module/client unit tests | offline | `stdb-es/testing` + Vitest | App code verifies reducers, cache, projections, views, and client encoding without a server |
-| Consumer integration tests | real server | planned `stdb-es/testing/integration` | App code verifies publish, concurrency, subscriptions, and anonymous access end to end |
+| Consumer integration tests | real server | `stdb-es/testing/integration` | App code verifies publish, concurrency, subscriptions, and anonymous access end to end |
 | Maintainer smoke | real server | `npm run smoke` | Publish the counter example and assert live behavior |
+| Integration kit dogfood | real server | `npm run smoke:integration` | Verify the consumer kit's own lifecycle and CI path |
 
 ### 3.2 Core package tests
 
@@ -1870,11 +1872,32 @@ npm run smoke
 It publishes the counter example, appends, rejects a stale version, replays idempotently, deletes a
 cache row and verifies replay-based recovery, and queries the anonymous view.
 
-**Planned in M7:** `stdb-es/testing/integration` will expose a Node-only `createIntegrationEnv` that
+For your own app, `stdb-es/testing/integration` ships the Node-only `createIntegrationEnv` kit. It
 publishes to a disposable database, calls reducers, runs owner/anonymous SQL, connects clients, waits
-for subscription convergence, and disposes the database. With `server: 'local'` it will spawn and own
+for subscription convergence, and disposes the database. With `server: 'local'` it spawns and owns
 `spacetime start --in-memory --non-interactive`, stopping that process in `dispose()`. With an
-explicit URL it will connect to that server without stopping a process it did not start.
+explicit URL it connects to that server without stopping a process it did not start.
+
+```bash
+npm install --save-dev stdb-es
+```
+
+```ts
+import { createIntegrationEnv } from 'stdb-es/testing/integration';
+
+const env = await createIntegrationEnv({ modulePath: 'spacetimedb' });
+try {
+  await env.call('append_events', [/* positional CLI args */]);
+  const rows = await env.sql('SELECT * FROM es_event');
+  console.log(rows.rows);
+} finally {
+  await env.dispose();
+}
+```
+
+The [Integration testing guide](integration%20testing.md#2-one-test-local-server) covers the full
+lifecycle, external servers, subscription clients, anonymous views, and troubleshooting. The
+repository also dogfoods the kit with `npm run smoke:integration`, which runs in the CI gate.
 
 ---
 

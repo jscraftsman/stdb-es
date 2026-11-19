@@ -16,4 +16,5 @@ export const EVENT_TYPES_COUNTER = {
 export const TABLES_COUNTER = {
   state: 'counter_state',
   summary: 'counter_summary',
+  streamEvents: 'stream_events',
 } as const;

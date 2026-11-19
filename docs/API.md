@@ -15,6 +15,7 @@ available yet.
 | `stdb-es/server` | SpacetimeDB module only | Tables, append/read, aggregates, repositories, projections, views, doctor |
 | `stdb-es/client` | browser or Node client | Registry, encoding, append client, row helpers, subscription query and event-row helpers |
 | `stdb-es/testing` | offline unit tests | Module/client helpers, harness shim, fixtures, contract suite |
+| `stdb-es/testing/integration` | Node-only integration tests | Disposable server/database lifecycle, CLI calls, SQL, subscriptions |
 
 Conventions used below:
 
@@ -432,12 +433,56 @@ resubmitting identical ids is a valid replay even when `expectedVersion` is stal
 
 ---
 
-## 5. Not shipped / planned
+## 5. `stdb-es/testing/integration` — live integration tooling (Node-only)
+
+This entry owns a real server lifecycle and needs the SpacetimeDB CLI `2.15.0` on `PATH`. It has no
+`vitest` dependency. See the [integration testing guide](integration%20testing.md) for task-oriented
+examples.
+
+| Symbol | Purpose | Inputs | Output |
+| --- | --- | --- | --- |
+| `createIntegrationEnv(options?)` | Creates a disposable published database | Options below | `IntegrationEnv` |
+| `integrationDatabase(prefix?)` | Generates a CLI-valid database name | Optional prefix, default `stdb-es-test` | `${normalized-prefix}-${8 hex}` |
+
+### 5.1 `CreateIntegrationEnvOptions`
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `server` | `'local'` | Owned in-memory server for `'local'`; an HTTP/WS URL or CLI nickname reuses an external server. |
+| `database` | generated | Disposable database name; only generated names are guaranteed to be unique. |
+| `modulePath` | `'spacetimedb'` | Directory passed to `spacetime publish -p`. |
+| `cwd` | `process.cwd()` | Working directory for CLI calls. |
+| `publish` | `true` | Publish during setup. Set `false` to attach to an existing database. |
+| `deleteData` | `true` | Publish with `--delete-data=always`. Only use against disposable databases. |
+| `port` | free port | Listen port in owned local mode. |
+| `keepDatabase` | `false` | Leave the database during `dispose()`. |
+| `keepServer` | `false` | Leave an owned local server running during `dispose()`. |
+| `timeoutMs` | `120000` | Readiness and default `waitFor` timeout. |
+
+### 5.2 `IntegrationEnv`
+
+| Member | Inputs | Output / behavior |
+| --- | --- | --- |
+| `server` | — | Resolved HTTP URL. |
+| `database` | — | Database name. |
+| `modulePath` | — | Resolved module path. |
+| `call(name, args?, options?)` | Reducer/procedure name; array of positional CLI values; optional `{ anonymous }` | `Promise<void>`. Objects and arrays are JSON tokens. |
+| `sql(query, options?)` | SQL statement; optional `{ anonymous }` | `{ rows, statements }`. Rows are keyed by column name. |
+| `connect(options?)` | `{ anonymous?, queries?, printInitialUpdate?, timeoutMs? }` | `IntegrationClient` backed by `spacetime subscribe`. |
+| `waitFor(predicate, options?)` | Sync/async predicate; `{ timeoutMs?, intervalMs?, description? }` | `Promise<void>`; throws with the description on timeout. |
+| `dispose()` | — | Closes clients, deletes the database, stops an owned server. Idempotent. |
+
+`IntegrationClient` exposes `rows(table)`, `tables()`, `subscribe(query)`, `waitFor(predicate,
+options?)`, and `close()`. Its row cache applies insert, delete, and update subscription messages;
+assert convergence with `waitFor` rather than fixed delays.
+
+---
+
+## 6. Not shipped / planned
 
 Do not import these; they have no runtime implementation yet.
 
 | Item | Milestone | Planned purpose |
 | --- | --- | --- |
-| `stdb-es/testing/integration` with `createIntegrationEnv` | M7 | Node-only publish/call/SQL/connect/wait/dispose lifecycle; local mode spawns and owns `spacetime start --in-memory --non-interactive`, URL mode connects to an external server |
 | Typed-enum payload mode | later | Schema-enforced event unions; currently only designed and spiked |
 | Async projection pump, `es_checkpoint`, dead-letter, scheduled rebuild | M14 (v1.1) | Offload expensive projections without changing the event model |

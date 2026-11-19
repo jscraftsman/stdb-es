@@ -59,3 +59,8 @@ export const EsStream = __t.object("EsStream", {
 });
 export type EsStream = __Infer<typeof EsStream>;
 
+export const StreamEvents = __t.object("StreamEvents", {
+  streamId: __t.string(),
+});
+export type StreamEvents = __Infer<typeof StreamEvents>;
+

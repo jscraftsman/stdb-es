@@ -6,8 +6,8 @@ Reference: [BuildYourOwnEventStore](https://github.com/oskardudycz/EventSourcing
 Target: a TypeScript npm package for SpacetimeDB 2.15.x (CLI verified locally: `spacetimedb-cli 2.15.0`).
 
 > Implementation note: this plan was written under the working name `spacetime-event-store`; the
-> package shipped as **`stdb-es`**, with entry points `.`, `./server`, `./client`, and `./testing`
-> (plus the planned `./testing/integration`). The architecture below is what was built.
+> package shipped as **`stdb-es`**, with entry points `.`, `./server`, `./client`, `./testing`, and
+> `./testing/integration`. The architecture below is what was built.
 
 > Spacetime is the whole backend: the module *is* the application server, reducers are the write
 > path, and views are the client read path. The package therefore ships **table definitions, pure
@@ -182,7 +182,7 @@ stdb-es/
       fake-append.ts      # records appends for client unit tests
       module-test.ts      # harness + Range shim convenience wrapper
       contracts.ts        # runEventStoreContractTests (optional vitest peer)
-      integration/        # planned: Node-only publish/call/sql/subscribe harness
+      integration/        # Node-only publish/call/sql/subscribe harness
       index.ts
   examples/
     counter/              # publishable module; target of the live smoke test
@@ -872,7 +872,7 @@ meaningful test; `test/unit-kit.test.ts` dogfoods the kit.
 
 ### 14.3 Layer 3 — consumer integration tests (`stdb-es/testing/integration`, R3)
 
-Node-only and planned for M7. It owns the lifecycle unit tests cannot:
+Shipped in M7. The Node-only entry owns the lifecycle unit tests cannot:
 
 ```ts
 const env = await createIntegrationEnv({
@@ -880,15 +880,19 @@ const env = await createIntegrationEnv({
   database: `my-app-test-${nonce}`,
   modulePath: 'spacetimedb',                  // publishes with --delete-data
 });
-await env.call('append_events', [...]);
+await env.call('append_events', [/* positional CLI args */]);
 await env.sql('SELECT version FROM es_stream');                  // owner
 await env.sql('SELECT * FROM summary', { anonymous: true });     // public view
-const client = await env.connect({ anonymous: true });
-await env.waitFor(() => rows.length === 1);
+const client = await env.connect({
+  anonymous: true,
+  queries: ['SELECT * FROM summary'],
+});
+await client.waitFor((c) => c.rows('summary').length === 1);
 await env.dispose();
 ```
 
-- Readiness check, publish, identities, SQL result parsing, subscription convergence, teardown.
+- Readiness check, publish, identities, SQL result parsing, subscription convergence, parameterized
+  view subscriptions, stale-version rejection, replay after cache loss, and teardown.
 - For `server: 'local'`, it spawns and owns `spacetime start --in-memory --non-interactive` and stops
   that child in `dispose()`. For an explicit URL, it connects to that server and does not stop a
   process it did not start (see §17).
@@ -896,8 +900,10 @@ await env.dispose();
 - Must cover: two identities appending concurrently; live subscription convergence; parameterized
   views with literal arguments; cache hit versus replay on a long stream; anonymous view access; and
   stale-version rejection end to end.
-- Status: planned. `scripts/smoke-example.mjs` proves the publish path today, but it is library-
-  specific and does not ship as a consumer tool.
+- Status: shipped. `src/testing/integration/` is the consumer tool; `scripts/integration-kit-smoke.mjs`
+  dogfoods local and external URL modes, and `test/integration-kit.test.ts` covers the pure helpers
+  offline. The guide lives in `docs/integration testing.md`. The older `scripts/smoke-example.mjs`
+  remains the library-specific full recovery smoke.
 
 ### 14.4 Layer 4 — maintainer live smoke
 
@@ -909,11 +915,11 @@ runs against `spacetime start --in-memory`.
 
 `.github/workflows/ci.yml` runs on push, pull request, and manual dispatch. It pins Node `24.22.3`
 and SpacetimeDB CLI `2.15.0`, then gates on build, library and example typechecks, offline
-`vitest run`, a packed fresh-workspace install (`npm run check:pack`), and the live smoke suite on a
-disposable in-memory local server. The pack check verifies the published `exports` map and shipped
-declarations from module-like and web-like workspaces; it loads browser-safe entry points at runtime
-and typechecks `stdb-es/server`, which needs the SpacetimeDB host to execute. When M7 lands, the
-consumer integration suite joins the same gate. Workflow configuration is committed here; a GitHub
+`vitest run`, a packed fresh-workspace install (`npm run check:pack`), the live maintainer smoke, and
+the consumer integration smoke (`npm run smoke:integration`) on disposable in-memory local servers.
+The pack check verifies the published `exports` map and shipped declarations from module-like and
+web-like workspaces; it loads browser-safe entry points at runtime and typechecks `stdb-es/server`,
+which needs the SpacetimeDB host to execute. Workflow configuration is committed here; a GitHub
 Actions run has not yet been observed.
 
 ---
@@ -931,7 +937,7 @@ Actions run has not yet been observed.
 | M4 | Inline projections + `rebuildBatch` + view factories + contract tests + **core unit-test floor** | 09 green; drift + smoke green; every public export covered offline | done |
 | M5 | Shared `streamId` helper, client SDK completion (subscription helper), npm metadata, CI gate | `streamId` shape/limit/error tests green; 8 subscription-helper tests green (93 total); CI workflow runs build + typecheck + unit + pack + smoke; fresh-app `npm pack` check passed locally | done |
 | M6 | **Consumer unit-test kit** (`stdb-es/testing`) | fake append, id helpers, module-test wrapper, and failure assertions shipped; 10 kit tests pass offline; a one-import, ~10-line consumer test needs no server | done |
-| M7 | **Consumer integration-test kit** (`stdb-es/testing/integration`) | one call creates, publishes, and tears down a disposable database; concurrency, subscription, and anonymous-view cases green locally and remotely | planned |
+| M7 | **Consumer integration-test kit** (`stdb-es/testing/integration`) | one call creates, publishes, and tears down a disposable database; concurrency, subscription, and anonymous-view cases green locally and remotely | done |
 | M8 | **Developer documentation**: `docs/usage-guide.md`, `docs/API.md`, README glossary | all four guide parts present; every shipped export documented with inputs/outputs; README glossary links to both documents | documentation done |
 
 M1 is the keystone: if dedupe/version/position ordering is wrong, everything downstream inherits it.
@@ -1012,7 +1018,7 @@ Resolved in v1:
 5. **Integration kit lifecycle.** For `server: 'local'`, `createIntegrationEnv` spawns and owns
    `spacetime start --in-memory --non-interactive`, waits for readiness, and stops that child in
    `dispose()`. For an explicit URL, it connects to the external server and never stops a process it
-   did not start. The kit is Node-only and planned for M7.
+   did not start. The kit is Node-only and shipped in M7.
 6. **Contract-test runner.** Keep `vitest` as an optional peer for the contract suite; the rest of
    `stdb-es/testing` stays runner-agnostic.
 

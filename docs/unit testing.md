@@ -297,6 +297,7 @@ No `spacetime start` is needed. These tests use the in-memory module harness onl
 ## 8. What is not here
 
 Server lifecycle tests — publish, call reducers over the network, owner/anonymous SQL, and live
-subscription convergence — belong to the planned `stdb-es/testing/integration` entry (M7). They need
-a real server and are deliberately separate from this offline kit. The current
+subscription convergence — belong to the Node-only `stdb-es/testing/integration` entry. They need a
+real server and are deliberately separate from this offline kit. See the
+[Integration testing guide](integration%20testing.md) for the shipped M7 lifecycle. The current
 `npm run smoke` is a maintainer-only live check, not a consumer test API.

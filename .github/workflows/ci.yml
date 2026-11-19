@@ -127,6 +127,9 @@ jobs:
       - name: Live publish smoke
         run: npm run smoke
 
+      - name: Integration kit smoke
+        run: npm run smoke:integration
+
       - name: Stop disposable local server
         if: always()
         run: |

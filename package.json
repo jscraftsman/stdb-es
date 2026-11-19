@@ -53,6 +53,10 @@
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "default": "./dist/testing/index.js"
+    },
+    "./testing/integration": {
+      "types": "./dist/testing/integration/index.d.ts",
+      "default": "./dist/testing/integration/index.js"
     }
   },
   "scripts": {
@@ -73,6 +77,7 @@
     "example:set:counter:publish": "npm run example:set:counter:build && npm run example:set:counter:generate && npm run example:set:counter:typecheck && spacetime publish stdb-es-counter-with-frontend -s local -p examples/sets/counter-with-frontend/spacetimedb",
     "example:set:counter:start": "npm run example:set:counter:publish && npm --prefix examples/sets/counter-with-frontend/web run dev",
     "smoke": "npm run example:publish:fresh && node scripts/smoke-example.mjs",
+    "smoke:integration": "npm run build && node scripts/integration-kit-smoke.mjs",
     "check:pack": "node scripts/pack-install-check.mjs",
     "prepublishOnly": "npm run clean && npm run build && npm run typecheck && npm test && npm run check:pack"
   },

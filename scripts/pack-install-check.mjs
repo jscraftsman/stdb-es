@@ -99,7 +99,7 @@ try {
     private: true,
     version: '0.0.0',
     type: 'module',
-    workspaces: ['module', 'web'],
+    workspaces: ['module', 'web', 'node'],
     devDependencies: { typescript: '^5.7.0' },
   });
 
@@ -149,6 +149,25 @@ try {
     ].join('\n'),
   );
 
+  writeJson('node/package.json', {
+    name: 'pack-check-node',
+    private: true,
+    version: '0.0.0',
+    type: 'module',
+    dependencies: { 'stdb-es': dependency, spacetimedb: '2.15.0' },
+  });
+  writeJson('node/tsconfig.json', sharedTsconfig);
+  write(
+    'node/src/index.ts',
+    [
+      "import { createIntegrationEnv, integrationDatabase } from 'stdb-es/testing/integration';",
+      '',
+      'export const makeEnv = createIntegrationEnv;',
+      'export const database = integrationDatabase();',
+      '',
+    ].join('\n'),
+  );
+
   write(
     'verify.mjs',
     [
@@ -168,6 +187,7 @@ try {
   runNpm(['install', '--no-audit', '--no-fund'], temp);
   runNpm(['exec', '--', 'tsc', '-p', 'module/tsconfig.json', '--noEmit'], temp);
   runNpm(['exec', '--', 'tsc', '-p', 'web/tsconfig.json', '--noEmit'], temp);
+  runNpm(['exec', '--', 'tsc', '-p', 'node/tsconfig.json', '--noEmit'], temp);
   run(process.execPath, ['verify.mjs'], temp);
 
   console.log(`Fresh-app pack check passed (${filename}).`);

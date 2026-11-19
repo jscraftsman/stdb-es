@@ -18,6 +18,8 @@ a second database, a message broker, or a separate read-model store.
   code, testing, and a simple React frontend, including domain-separated layouts.
 - [API reference](docs/API.md) — every shipped export, its inputs, and its outputs.
 - [Unit testing guide](docs/unit%20testing.md) — offline module and client tests, fakes, and assertions.
+- [Integration testing guide](docs/integration%20testing.md) — real-server lifecycle, subscriptions,
+  anonymous views, and teardown.
 - [SQL recipes](docs/sql-recipes.md) — owner-only inspection and repair queries.
 - [Counter with frontend](examples/sets/counter-with-frontend/README.md) — runnable full-stack set.
 - [Design record](docs/event-sourcing-plan.md) — decisions, rejected alternatives, and milestones.
@@ -541,7 +543,10 @@ rows.
 ### Testing
 
 For a step-by-step offline testing workflow, see the [unit testing guide](docs/unit%20testing.md).
-`stdb-es/testing` can also run your real module through SpacetimeDB's module test harness:
+For tests that need a real server, the Node-only `stdb-es/testing/integration` entry manages a
+disposable publish/call/SQL/subscribe/dispose lifecycle; see the
+[integration testing guide](docs/integration%20testing.md). `stdb-es/testing` can also run your real
+module through SpacetimeDB's module test harness:
 
 ```ts
 import { streamId } from 'stdb-es';
@@ -644,15 +649,17 @@ the head counter, and every projection.
 | `stdb-es/server` | Tables, append/read, repository, projections, view factories, doctor |
 | `stdb-es/client` | Event registry, encoding, append client, subscription query helpers, subscription bridge |
 | `stdb-es/testing` | Module/client test helpers, deterministic ids, append-error assertions, fakes, fixtures, contract tests, and the `withIndexRanges` harness shim |
+| `stdb-es/testing/integration` | Node-only disposable server/database lifecycle, CLI calls, SQL, subscriptions, and teardown |
 
 ## Development
 
 ```bash
 npm install
-npm test              # 103 tests, in-memory harness
+npm test              # 111 tests, in-memory harness
 npm run build         # tsc -> dist (declarations included)
 npm run check:pack    # install a packed tarball in a fresh workspace app
 npm run smoke         # publish the example and run the live smoke test
+npm run smoke:integration # dogfood stdb-es/testing/integration on a disposable server
 ```
 
 To run the full-stack set (React + module) against the already-running local server:

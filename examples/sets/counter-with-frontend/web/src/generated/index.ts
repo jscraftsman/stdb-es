@@ -40,6 +40,7 @@ import AppendEventsReducer from "./append_events_reducer";
 
 // Import all table schema definitions
 import CounterSummaryRow from "./counter_summary_table";
+import StreamEventsRow from "./stream_events_table";
 
 /** Type-only namespace exports for generated type groups. */
 
@@ -52,6 +53,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, CounterSummaryRow),
+  streamEvents: __table({
+    name: 'stream_events',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, StreamEventsRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
@@ -69,6 +77,7 @@ const REMOTE_MODULE = {
     cliVersion: "2.15.0" as const,
   },
   tables: tablesSchema.schemaType.tables,
+  viewsWithArgs: ["stream_events"],
   reducers: reducersSchema.reducersType.reducers,
   ...proceduresSchema,
 } satisfies __RemoteModule<

@@ -4,7 +4,7 @@ A small full-stack example set: one SpacetimeDB module plus one React client usi
 event log, optimistic concurrency, a state cache, and a live anonymous read model.
 
 This is the baseline for the planned example sets. It deliberately stays small: one stream, three
-event types, one state table, one view, and one screen.
+event types, one state table, two views, and one screen.
 
 ## Prerequisites
 
@@ -69,6 +69,10 @@ for the in-memory datastore, and the client keeps it so importing the `stdb-es/t
 resolvable in Node. No running server is involved. See the
 [unit testing guide](../../../docs/unit%20testing.md) for the full API.
 
+For the real-server lifecycle, the repository root runs `npm run smoke:integration`. It dogfoods
+`stdb-es/testing/integration` with this module, including the parameterized `stream_events` view;
+see the [integration testing guide](../../../docs/integration%20testing.md).
+
 ## What it demonstrates
 
 - `streamId(STREAM_PREFIXES_COUNTER.counter, '1')` for a stable stream id on both sides.
@@ -76,6 +80,9 @@ resolvable in Node. No running server is involved. See the
 - `expectedVersion` from the subscribed view version, with `NO_STREAM` for the first append.
 - A module-owned state cache that replays the log when its row is missing.
 - An anonymous materialized view consumed with `useTable(tables.counterSummary)`.
+- A public parameterized `stream_events` view built with `makeStreamView` and queried with
+  `viewQuery('stream_events', [streamId])`; this demo authorizes every stream, but a real app should
+  check ownership in the view's `authorize` callback.
 - App-owned constants in `domains/counter/constants.ts` on both module and web sides. Never import
   those files from `stdb-es` itself.
 - Offline tests that exercise the real reducer and the real client store through
@@ -96,7 +103,7 @@ counter-with-frontend/
         aggregate.ts                 # evolve + replay
         reducers.ts                  # append_events
         reducers.test.ts             # createModuleTest + ids + expectAppendError
-        views.ts                     # counter_summary
+        views.ts                     # counter_summary + stream_events
   web/
     vitest.config.ts
     src/
@@ -114,6 +121,6 @@ counter-with-frontend/
 
 ## Out of scope
 
-No authentication, no parameterized views, no cross-aggregate workflow, no schema evolution, and no
-async projection pump. The UI shows one shared public counter; it is not a multi-user authorization
-demo.
+No authentication, no parameterized views in the UI, no cross-aggregate workflow, no schema
+evolution, and no async projection pump. The parameterized audit view exists for integration tests;
+the UI still shows one shared public counter and is not a multi-user authorization demo.
