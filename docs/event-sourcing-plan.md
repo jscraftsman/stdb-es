@@ -159,6 +159,11 @@ shows the additive case is safe; it is not part of the v1 API.
 
 ## 4. Package layout
 
+> **Historical pre-M15 layout.** This records the M0–M8 package shape. The browser-facing
+> `client/event-store.ts` and `makeAppendReducer` append surface was removed in M15 (§18); the shipped
+> client entry is command dispatch plus read-side codecs and subscription helpers. `fake-append.ts`
+> remains only as a deprecated migration aid.
+
 ```
 stdb-es/
   package.json            # exports ".", "./server", "./client", "./testing", "./testing/integration"
@@ -390,7 +395,11 @@ Concurrency notes:
 - Errors use stable `ES_*` prefixes so clients can pattern-match; the message carries expected/found.
 - The per-stream version is the concurrency token. The global position is not.
 
-The reducer is app-owned and one line:
+> **Historical pre-M15 example.** Before R9, an app could export a generic `appendEvents` reducer.
+> M15 removes that public surface: only app-defined command reducers may append, and they derive the
+> event envelope server-side (§18).
+
+In the pre-M15 design, the reducer was app-owned and one line:
 
 ```ts
 export const appendEvents = spacetimedb.reducer({ /* args */ }, (ctx, args) => {
@@ -763,6 +772,10 @@ The package enforces shape and behavior, not table definitions:
 3. **Contract tests** (`stdb-es/testing`) run the app's actual module through the harness and fail on
    drift:
 
+   > **Historical pre-M15 shape shown.** The server-only `append` seam is still supported for seeding
+   > store invariants; M15 adds the optional `commands` block for the browser boundary (§18.3 and
+   > API reference §4.3).
+
    ```ts
    runEventStoreContractTests({
      name: 'counter contract',
@@ -803,6 +816,10 @@ App-owned constants (`STREAM_TYPES_*`, `STREAM_PREFIXES_*`, `EVENT_TYPES_*`, `TA
 
 Client surface:
 
+> **Historical pre-M15 surface.** The `encodeEvents` and `createEventStoreClient(...).append/.retry`
+> lines below are the baseline that R9 replaces. The shipped client exports `createCommandClient`
+> plus read-side codecs and subscription helpers; see §18 and the API reference.
+
 ```ts
 createEventRegistry({ typeOf, events });          // encode/decode/upgrade per event type
 encodeEvents(registry, events, { newEventId?, metadata? });
@@ -815,11 +832,12 @@ subscribeEventRows({ connection, query, readRows, onRows, onError?, streamId? })
 createStreamSubscription({ connection, query(streamId), readRows, onRows });
 ```
 
-- `append` calls the app's generated reducer; `retry` re-sends the exact encoded batch, event ids
-  included, so a timeout after a commit settles as a replay instead of a duplicate.
+- Historically, `append` called the app's generated reducer and `retry` re-sent the exact encoded
+  batch, event ids included, so a timeout after a commit settled as a replay.
 - `decode` turns `{ eventType, data }` into a discriminated union. Upcasters live here, so old events
   read as current types.
-- The append client and `sliceRows` own no state; they filter rows a subscription already delivered.
+- The historical append client and `sliceRows` owned no state; they filtered rows a subscription
+  already delivered.
 - **Shipped (M5):** `subscribeEventRows` binds a view/table/raw query to row handlers, filters rows by
   stream, registers callbacks once so SDK reconnect replay refreshes them, and routes errors to
   `onError` or rethrows them. `createStreamSubscription` keeps one per-stream query active and ignores
@@ -864,18 +882,20 @@ suite is dogfooded (`test/contracts.test.ts`) so consumer tooling cannot rot.
 
 ### 14.2 Layer 2 — consumer unit tests (`stdb-es/testing`, R2)
 
-Shipped: `runEventStoreContractTests`, `wireEvents`, `withIndexRanges`, and the M6 kit:
+Shipped: `runEventStoreContractTests`, `wireEvents`, `withIndexRanges`, and the M6/M15 kit:
 
 ```ts
-createModuleTest(spacetimedb, { ... });     // harness transaction + Range wrapper
-ids('evt', n);                              // deterministic, retry-safe event ids
+createModuleTest(spacetimedb, { ... });      // harness transaction + Range wrapper
+ids('evt', n);                               // deterministic, retry-safe fixture ids
 expectAppendError(fn, ES_ERROR.EXPECTED_VERSION_MISMATCH);
-createFakeAppend({ result?, error? });      // client tests: records calls, returns canned replies
+createFakeCommand({ result?, error? });      // client tests: records intent + commandId
+createFakeAppend({ result?, error? });       // deprecated migration aid only
 ```
 
 `createModuleTest` returns `tx`, `call`, `view`, `anonymousView`, and the underlying harness. All
-contexts are shimmed automatically. `createFakeAppend` supports queued `nextResult`/`nextError`
-replies for timeout-and-retry sequences. The task-oriented guide lives in `docs/unit testing.md`.
+contexts are shimmed automatically. `createFakeCommand` supports queued `nextResult`/`nextError`
+replies for timeout-and-retry sequences; `createFakeAppend` is kept only for consumers midway through
+the M15 migration. The task-oriented guide lives in `docs/unit testing.md`.
 
 Rules: no network, no Node built-ins, no server. Runner-agnostic except the optional `vitest` peer
 that the contract suite imports. A consumer needs one import and roughly ten lines for a first
@@ -891,7 +911,7 @@ const env = await createIntegrationEnv({
   database: `my-app-test-${nonce}`,
   modulePath: 'spacetimedb',                  // publishes with --delete-data
 });
-await env.call('append_events', [/* positional CLI args */]);
+await env.call('increment', [/* positional CLI args: counterId, by, commandId */]);
 await env.sql('SELECT version FROM es_stream');                  // owner
 await env.sql('SELECT * FROM summary', { anonymous: true });     // public view
 const client = await env.connect({
@@ -901,6 +921,9 @@ const client = await env.connect({
 await client.waitFor((c) => c.rows('summary').length === 1);
 await env.dispose();
 ```
+
+The reducer name and positional order are app-defined; the example assumes an
+`increment(counterId, by, commandId)` reducer.
 
 - Readiness check, publish, identities, SQL result parsing, subscription convergence, parameterized
   view subscriptions, stale-version rejection, replay after cache loss, and teardown.
@@ -919,9 +942,9 @@ await env.dispose();
 
 ### 14.4 Layer 4 — maintainer live smoke
 
-`npm run smoke` publishes the counter with `--delete-data`, appends, rejects a stale version, replays
-idempotently, deletes a cache row to prove replay-based recovery, and queries the anonymous view. It
-runs against `spacetime start --in-memory`.
+`npm run smoke` publishes the counter with `--delete-data`, sends command reducers, checks deterministic
+event ids and idempotent replay, rejects a non-owner command, deletes a cache row to prove replay-based
+recovery, and queries the anonymous view. It runs against `spacetime start --in-memory`.
 
 ### 14.5 CI (R5)
 
@@ -965,14 +988,14 @@ UI**. The existing `examples/counter` remains the basic warm-up; these sets deli
 intermediate concepts. Keep each set small: one or two streams per domain, one state table, one read
 model, one screen, one contract test file. Do not re-teach basic append/read mechanics in every set.
 
-The baseline set `examples/sets/counter-with-frontend` is implemented. It demonstrates the full
-loop — app-owned constants, `streamId`, client event registry, generic append reducer, state cache
-with replay-on-miss, anonymous view subscription, and a one-screen React UI — with
+The baseline set `examples/sets/counter-with-frontend` is implemented. Since M15 it demonstrates the
+full loop — app-owned constants, `streamId`, client event registry, backend-owned command reducers,
+state cache with replay-on-miss, anonymous view subscription, and a one-screen React UI — with
 `npm run example:set:counter:start`. It does not replace any of the concept-focused sets below.
 
 | # | Example set | Concept focus | Module app code | Simple React UI | Explicitly out of scope |
 | --- | --- | --- | --- | --- | --- |
-| **M9** | **Idempotent order intake** | Idempotency; optimistic concurrency; client retry after timeout | `PlaceOrder` stream; `newEventId` from the client; `expectedVersion: NO_STREAM`; dedupe before version check; fake-append unit test | Order form, submit button, retry button, result banner showing `appended` vs `replayed` via the version view | No payments, no inventory, no multi-domain split |
+| **M9** | **Idempotent order intake** (pre-M15 sketch; deferred) | Idempotency; optimistic concurrency; retry after timeout | Pre-M15 sketch: `PlaceOrder` stream; browser `newEventId`; `expectedVersion: NO_STREAM`; fake-append test. Under R9/M15 these become caller `commandId`, module-derived event ids, and command-boundary tests. | Order form, submit button, retry button, result banner showing `appended` vs `replayed` via the version view | No payments, no inventory, no multi-domain split |
 | **M10** | **Eventually consistent delivery tracker** | Eventual consistency between independent aggregates and client views; read-your-writes polling | `Delivery` stream plus a `Courier` stream updated by separate reducers; head view for the known version; anonymous location read model; tests assert convergence, not instant global state | Shipment status card, location list, “refresh until version N” control, pending indicator | No async pump, no cross-aggregate compensation, no payment flow |
 | **M11** | **Cross-aggregate money transfer** | Cross-aggregate coordination; process state; compensating failure | `Account` streams for two owners plus one `Transfer` process stream; `TransferRequested → Debited → Credited/Reversed`; deterministic inline projection; contract test for balanced totals | Two balances, transfer form, transfer timeline, failed/compensated state | No general saga framework, no multi-domain layout, no schema migration |
 | **M12** | **Multi-domain storefront** | Multiple domains; bounded-context boundaries; domain-separated project structure | `orders`, `inventory`, `billing` folders; one schema per module but one stream type registry per domain; domain-local caches/projections/views; cross-domain IDs only, never shared event unions | Three small panels with one shared provider; each domain owns its registry, hooks, and components | No new event-sourcing primitive, no transfer saga, no schema-evolution story |

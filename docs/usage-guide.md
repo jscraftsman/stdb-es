@@ -2151,7 +2151,8 @@ and `createdAtMicros`). Use it when you want the domain event rather than raw ro
 - [ ] Every command carries `commandId`, and the module derives event ids deterministically from it.
 - [ ] Web code imports command payload types from `spacetime generate` output.
 - [ ] Every state cache table has a `version` column and a replay-on-miss path.
-- [ ] Every command uses an explicit `expectedVersion` when concurrent writers are possible.
+- [ ] Every command reducer chooses an explicit `expectedVersion` (usually from `streamVersion`)
+      when concurrent writers are possible.
 - [ ] Event ids are stable across retries and fresh for new events.
 - [ ] Projections are deterministic and have `reset` if rebuilds are needed.
 - [ ] Old payloads have `upgrade` functions in the client registry.

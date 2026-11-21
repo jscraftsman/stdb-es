@@ -7,24 +7,13 @@ select `publish` explicitly.
 
 ## One-time setup (manual)
 
-1. **Confirm npm access.** The name `stdb-es` is currently unclaimed. Use an npm account that can
-   create and publish it.
+1. **Confirm npm access.** `stdb-es` already exists on npm. Use an npm account that can publish that
+   package.
 2. **Create the GitHub environment.** In the repository, go to **Settings → Environments** and create
    `npm-publish`. Add required reviewers if you want a second approval after starting the workflow.
 3. **Set up authentication.**
-   - **First publish:** npm only lets you configure a trusted publisher after the package exists, so
-     the first release needs a token. On npmjs.com, open **Access Tokens → Generate New Token** and
-     create a **granular access token**:
-     - Permission: **Read and write (publish and stage)**
-     - Packages and scopes: **All Packages** (the `stdb-es` package does not exist yet, so it cannot
-       be selected by name)
-     - Check **Bypass two-factor authentication** so GitHub Actions can publish non-interactively
-     - Use a short expiration, for example 90 days
-
-     Copy the token when it is displayed and add it as the GitHub repository secret `NPM_TOKEN`.
-   - **Subsequent publishes (recommended): npm trusted publishing (OIDC).** After the first publish,
-     open the package's **Settings → Trusted publishing** page on npmjs.com and add a GitHub Actions
-     publisher:
+   - **Recommended: npm trusted publishing (OIDC).** On npmjs.com, open the `stdb-es` package's
+     **Settings → Trusted publishing** page and add a GitHub Actions publisher:
      - Organization/user: `jscraftsman`
      - Repository: `stdb-es`
      - Workflow filename: `publish.yml`
@@ -34,11 +23,19 @@ select `publish` explicitly.
      The workflow requests `id-token: write` and needs no long-lived token when OIDC is configured.
      npm generates provenance automatically for public repositories. A new trusted publisher must
      complete one successful publish within **2 days** or it expires.
+   - **Fallback: granular access token.** If OIDC is not configured yet, on npmjs.com open
+     **Access Tokens → Generate New Token** and create a **granular access token**:
+     - Permission: **Read and write (publish and stage)**
+     - Packages and scopes: select the existing `stdb-es` package
+     - Check **Bypass two-factor authentication** so GitHub Actions can publish non-interactively
+     - Use a short expiration, for example 90 days
 
-     **Important:** the workflow prefers `NPM_TOKEN` whenever that secret exists. After configuring
-     trusted publishing, **delete the `NPM_TOKEN` repository secret** before the next publish so OIDC
-     is actually exercised. Once an OIDC publish succeeds, revoke the npm token and, in the package's
-     **Publishing access** settings, choose to disallow tokens.
+     Copy the token when it is displayed and add it as the GitHub repository secret `NPM_TOKEN`.
+
+   **Important:** the workflow prefers `NPM_TOKEN` whenever that secret exists. After configuring
+   trusted publishing, **delete the `NPM_TOKEN` repository secret** before the next publish so OIDC
+   is actually exercised. Once an OIDC publish succeeds, revoke the npm token and, in the package's
+   **Publishing access** settings, choose to disallow tokens.
 4. **Keep `master` as the default branch.** Runs started from any other branch are skipped, and the
    job also contains an in-step branch guard. The `repository.url` in `package.json` must continue to
    point at `https://github.com/jscraftsman/stdb-es.git`.

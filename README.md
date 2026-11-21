@@ -735,7 +735,7 @@ the head counter, and every projection.
 | --- | --- |
 | `stdb-es` | Error codes, the `streamId(prefix, key)` helper, and protocol types (safe from client and server code) |
 | `stdb-es/server` | Tables, append/read, repository, projections, view factories, doctor |
-| `stdb-es/client` | Event registry, encoding, append client, subscription query helpers, subscription bridge |
+| `stdb-es/client` | Command client, read-side event registry/codecs, subscription query helpers, subscription bridge |
 | `stdb-es/testing` | Module/client test helpers, deterministic ids, append-error assertions, fakes, fixtures, contract tests, and the `withIndexRanges` harness shim |
 | `stdb-es/testing/integration` | Node-only disposable server/database lifecycle, CLI calls, SQL, subscriptions, and teardown |
 
@@ -743,7 +743,7 @@ the head counter, and every projection.
 
 ```bash
 npm install
-npm test              # 111 tests, in-memory harness
+npm test              # offline suite, in-memory harness
 npm run build         # tsc -> dist (declarations included)
 npm run check:pack    # install a packed tarball in a fresh workspace app
 npm run smoke         # publish the example and run the live smoke test
@@ -772,10 +772,10 @@ CLI has skipped its own type check. `npm run example:typecheck` and
 `npm run example:set:counter:typecheck` run that check explicitly and are part of their respective
 build/publish/start scripts.
 
-It republishes `stdb-es-counter`, appends through the generated reducer, and asserts against
+It republishes `stdb-es-counter`, drives the generated command reducers, and asserts against
 `es_stream` plus the app-owned names in `TABLES_COUNTER.state` and `VIEWS_COUNTER.summary`
-(`counter_state` and `counter_summary`) — including a stale-version rejection, an idempotent retry,
-and a cache row that is deleted and then rebuilt by replay.
+(`counter_state` and `counter_summary`) — including deterministic event ids, an idempotent replay,
+non-owner rejection, and a cache row that is deleted and then rebuilt by replay.
 
 The module-only example lives in `examples/counter`; the runnable full-stack set lives in
 [`examples/sets/counter-with-frontend`](examples/sets/counter-with-frontend/README.md). The design
