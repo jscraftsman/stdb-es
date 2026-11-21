@@ -1,3 +1,20 @@
+## 0.4.0 (2026-11-21)
+
+### BREAKING CHANGE
+
+- New write boundary approach. Frontend SDK no longer has direct access to appending events and will instead just send commands to the backend
+
+### Feat
+
+- **WriteBoundary**: Phase 6: Document updates for new write boundary approach. New requirements implemented
+- **WriteBoundary**: Phase 2: Updated core source code to prefer command in frontend instead of exposing the event store append
+
+### Refactor
+
+- **WriteBoundary**: Phase 5: Updated examples to use new write boundary approach
+- **WriteBoundary**: Phase 4: Updated integration testing kit to use new write boundary approach
+- **WriteBoundary**: Phase 3: Updated unit testing kit to use new write boundary approach
+
 ## 0.3.0 (2026-11-19)
 
 ### Feat
