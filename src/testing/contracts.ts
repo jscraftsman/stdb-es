@@ -1,5 +1,6 @@
 import { createModuleTestHarness, TestAuth } from 'spacetimedb/server/test-utils';
 import { describe, expect, it } from 'vitest';
+import type { CommandEnvelope } from '../client/command.js';
 import {
   ANY_VERSION,
   ES_ERROR,
@@ -60,18 +61,39 @@ export type ContractView = {
   check: (result: unknown, streamId: string) => void;
 };
 
+/**
+ * Optional command-boundary checks against the app's real command reducers.
+ *
+ * The store invariants above are seeded through a server-side write seam. These
+ * checks cover the browser-facing boundary instead: a command is the only input,
+ * a repeated `commandId` is idempotent, and a caller without an ownership row
+ * cannot write to the stream.
+ */
+export type ContractCommands<TCommand extends object = any> = {
+  /** Export name of the command reducer in `moduleExports`. */
+  name: string;
+  /** Builds the command payload for a stream and an explicit idempotency key. */
+  command: (streamId: string, commandId: string) => CommandEnvelope<TCommand>;
+  /** Seeds ownership for the default sender. Enables the negative check. */
+  authorize?: (ctx: any, streamId: string) => void;
+  /** Reads the stream version after a command. */
+  version: (ctx: any, streamId: string) => number;
+};
+
 export type EventStoreContractOptions = {
   /** Suite name. Defaults to "Event store contract". */
   name?: string;
   /** The app module schema, used to build a fresh harness per case. */
   spacetimedb: any;
-  /** Exports needed while describing the module. Usually `{ appendEvents }`. */
+  /** Exports needed while describing the module. Include command reducers when set. */
   moduleExports?: Record<string, unknown>;
-  /** The generation-1 append reducer exported by the app. */
+  /** The app's server-side write seam. Not a browser-facing API. */
   append: (ctx: any, args: AppendArgs) => void;
   streams: ContractStream[];
   projections?: ContractProjections;
   views?: ContractView[];
+  /** Optional command-boundary checks. See §18 of the event-sourcing plan. */
+  commands?: ContractCommands;
   /** Stream id per aggregate. Defaults to `contract-${streamType}`. */
   streamId?: (stream: ContractStream) => string;
 };
@@ -91,6 +113,8 @@ export function runEventStoreContractTests(options: EventStoreContractOptions): 
     createModuleTestHarness(options.spacetimedb, options.moduleExports ?? {});
   const tx = <T>(harness: Harness, body: (ctx: any) => T): T =>
     harness.withReducerTx(TestAuth.internal(), (ctx) => body(withIndexRanges(ctx)));
+  const txAs = <T>(harness: Harness, auth: TestAuth, body: (ctx: any) => T): T =>
+    harness.withReducerTx(auth, (ctx) => body(withIndexRanges(ctx)));
   const idOf = options.streamId ?? ((stream: ContractStream) => `contract-${stream.streamType}`);
   const argsFor = (
     stream: ContractStream,
@@ -275,6 +299,50 @@ export function runEventStoreContractTests(options: EventStoreContractOptions): 
 
     const first = options.streams[0];
     const firstId = first ? idOf(first) : 'contract';
+
+    if (options.commands) {
+      const { name, command, authorize, version } = options.commands;
+      const commandId = `contract-${name}`;
+      const call = (harness: Harness, auth: TestAuth = TestAuth.internal()): void => {
+        const reducer = options.moduleExports?.[name];
+        if (typeof reducer !== 'function') {
+          throw new Error(`contract: no reducer named '${name}' in moduleExports`);
+        }
+        txAs(harness, auth, (ctx) =>
+          (reducer as (ctx: unknown, args: unknown) => void)(ctx, command(firstId, commandId)),
+        );
+      };
+
+      describe(`${name} command`, () => {
+        it('appends once for a command id', () => {
+          const harness = createHarness();
+          tx(harness, (ctx) => authorize?.(ctx, firstId));
+
+          call(harness);
+
+          expect(tx(harness, (ctx) => version(ctx, firstId))).toBe(1);
+        });
+
+        it('replays a retried command id without appending again', () => {
+          const harness = createHarness();
+          tx(harness, (ctx) => authorize?.(ctx, firstId));
+
+          call(harness);
+          call(harness);
+
+          expect(tx(harness, (ctx) => version(ctx, firstId))).toBe(1);
+        });
+
+        if (authorize) {
+          it('rejects a caller without an ownership row', () => {
+            const harness = createHarness();
+
+            expect(() => call(harness)).toThrow();
+            expect(tx(harness, (ctx) => version(ctx, firstId))).toBe(0);
+          });
+        }
+      });
+    }
 
     if (options.projections && first) {
       const { projections, snapshot } = options.projections;

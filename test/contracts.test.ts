@@ -1,11 +1,13 @@
 import { expect } from 'vitest';
-import { makeRepository } from '../src/server/index.js';
+import { makeRepository, streamVersion } from '../src/server/index.js';
 import { runEventStoreContractTests, wireEvents } from '../src/testing/index.js';
 import { counterCache, counterDefinition, counterEncoding, replayCounter } from './counter.js';
 import {
   appendEvents,
   counterHead,
   counterStream,
+  counterStreamId,
+  increment as incrementCommand,
   projections,
   spacetimedb,
   type CounterEvent,
@@ -35,8 +37,16 @@ const SAMPLE: ReadonlyArray<readonly [eventType: string, payload: unknown, domai
 runEventStoreContractTests({
   name: 'Event store contract (counter fixture)',
   spacetimedb,
-  moduleExports: { appendEvents },
+  moduleExports: { appendEvents, increment: incrementCommand },
   append: (ctx, args) => appendEvents(ctx, args),
+  commands: {
+    name: 'increment',
+    command: (streamId, commandId) => ({ counterId: streamId, by: 1, commandId }),
+    authorize: (ctx, streamId) => {
+      ctx.db.counterOwner.insert({ streamId: counterStreamId(streamId), owner: ctx.sender });
+    },
+    version: (ctx, streamId) => streamVersion(ctx, counterStreamId(streamId)),
+  },
   streamId: () => 'counter-1',
   streams: [
     {

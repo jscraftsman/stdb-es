@@ -3,6 +3,7 @@ import { ES_ERROR, NO_STREAM, buildEsErrorMessage } from '../src/index.js';
 import { readStream } from '../src/server/index.js';
 import {
   createFakeAppend,
+  createFakeCommand,
   createModuleTest,
   expectAppendError,
   ids,
@@ -108,6 +109,47 @@ describe('createFakeAppend', () => {
     await expect(fake(appendArgs())).rejects.toThrow('timeout');
     await expect(fake(appendArgs())).resolves.toBeUndefined();
     expect(fake.calls).toHaveLength(3);
+  });
+});
+
+describe('createFakeCommand', () => {
+  type Increment = { counterId: string; by: number; commandId: string };
+
+  it('records intent-only calls and returns the configured result', async () => {
+    const command: Increment = { counterId: 'counter-1', by: 2, commandId: 'cmd-1' };
+    const fake = createFakeCommand<Increment>({ result: { ok: true } });
+
+    await expect(fake(command)).resolves.toEqual({ ok: true });
+    expect(fake.calls).toHaveLength(1);
+    expect(fake.calls[0]).not.toBe(command);
+    expect(fake.calls[0]).toEqual(command);
+    expect(fake.calls[0]).not.toHaveProperty('streamId');
+    expect(fake.calls[0]).not.toHaveProperty('events');
+    expect(fake.lastCall).toEqual(command);
+
+    fake.clear();
+    expect(fake.calls).toEqual([]);
+  });
+
+  it('rejects with the configured error', async () => {
+    const fake = createFakeCommand<Increment>({ error: new Error('timeout') });
+    await expect(fake({ counterId: 'counter-1', by: 1, commandId: 'cmd-2' })).rejects.toThrow(
+      'timeout',
+    );
+  });
+
+  it('supports queued replies and rejects conflicting defaults', async () => {
+    const fake = createFakeCommand<Increment>();
+    fake.nextResult('ok').nextError(new Error('retry failed'));
+
+    await expect(fake({ counterId: 'counter-1', by: 1, commandId: 'cmd-3' })).resolves.toBe('ok');
+    await expect(fake({ counterId: 'counter-1', by: 1, commandId: 'cmd-3' })).rejects.toThrow(
+      'retry failed',
+    );
+
+    expect(() => createFakeCommand({ result: 'ok', error: new Error('no') })).toThrow(
+      /provide result or error/,
+    );
   });
 });
 

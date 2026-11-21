@@ -1,4 +1,5 @@
 import { schema, t, table } from 'spacetimedb/server';
+import { streamId as makeStreamId } from '../src/stream-id.js';
 import {
   appendToStream,
   applyInline,
@@ -6,6 +7,8 @@ import {
   makeStreamAtView,
   makeStreamHeadView,
   makeStreamView,
+  streamVersion,
+  type AppendResult,
   type CtxOf,
   type EsCtx,
   type InlineProjection,
@@ -79,6 +82,35 @@ const totalsProjection: InlineProjection<AppCtx> = {
 
 export const projections = [totalsProjection];
 
+type CounterAppendCtx = AppCtx & EsCtx;
+
+/** Mirrors the module-owned stream-id derivation from a validated counter id. */
+export function counterStreamId(counterId: string): string {
+  return makeStreamId('counter', counterId);
+}
+
+const counterEventTypes = ['Incremented', 'Decremented', 'Reset'] as const;
+
+function applyCounterAppended(ctx: CounterAppendCtx, result: AppendResult): void {
+  const streamId = result.rows[0]?.streamId;
+  if (!streamId) return;
+
+  const current = ctx.db.counterState.streamId.find(streamId);
+  let value = current?.value ?? 0n;
+  for (const row of result.rows) {
+    const event = decodeCounterEvent(row);
+    if (event.type === 'Incremented') value += BigInt(event.by);
+    else if (event.type === 'Decremented') value -= BigInt(event.by);
+    else value = 0n;
+  }
+
+  const next = { streamId, version: result.version, value };
+  if (current) ctx.db.counterState.streamId.update(next);
+  else ctx.db.counterState.insert(next);
+
+  applyInline(ctx, projections, result.rows);
+}
+
 /**
  * Test-only app reducer.
  *
@@ -114,26 +146,54 @@ export const appendEvents = spacetimedb.reducer(
         metadata: args.metadata ?? null,
       },
       {
-        eventTypes: ['Incremented', 'Decremented', 'Reset'],
-        onAppended: (appendCtx, result) => {
-          const streamId = result.rows[0]?.streamId;
-          if (!streamId) return;
+        eventTypes: counterEventTypes,
+        onAppended: applyCounterAppended,
+      },
+    );
+  },
+);
 
-          const current = appendCtx.db.counterState.streamId.find(streamId);
-          let value = current?.value ?? 0n;
-          for (const row of result.rows) {
-            const event = decodeCounterEvent(row);
-            if (event.type === 'Incremented') value += BigInt(event.by);
-            else if (event.type === 'Decremented') value -= BigInt(event.by);
-            else value = 0n;
-          }
+/**
+ * Test-only command reducer.
+ *
+ * The browser sends only a counter id, an amount, and an idempotency key. This
+ * reducer derives the stream id and event, checks `ctx.sender` against an
+ * ownership row, and passes a server-chosen expected version to the store.
+ */
+export const increment = spacetimedb.reducer(
+  {
+    counterId: t.string(),
+    by: t.u32(),
+    commandId: t.string(),
+  },
+  (ctx, command) => {
+    if (!command.commandId) throw new Error('CMD_INVALID_COMMAND: commandId is required');
+    if (command.by === 0) throw new Error('CMD_INVALID_COMMAND: by must be greater than zero');
 
-          const next = { streamId, version: result.version, value };
-          if (current) appendCtx.db.counterState.streamId.update(next);
-          else appendCtx.db.counterState.insert(next);
+    const stream = counterStreamId(command.counterId);
+    const owner = ctx.db.counterOwner.streamId.find(stream);
+    if (!owner?.owner.equals(ctx.sender)) {
+      throw new Error('CMD_UNAUTHORIZED: sender does not own this counter');
+    }
 
-          applyInline(appendCtx, projections, result.rows);
-        },
+    const appCtx = ctx as unknown as CounterAppendCtx;
+    appendToStream(
+      appCtx,
+      {
+        streamId: stream,
+        streamType: 'Counter',
+        expectedVersion: streamVersion(appCtx, stream),
+        events: [
+          {
+            eventId: `inc-${command.commandId}`,
+            eventType: 'Incremented',
+            data: JSON.stringify({ kind: 'Incremented', by: command.by }),
+          },
+        ],
+      },
+      {
+        eventTypes: counterEventTypes,
+        onAppended: applyCounterAppended,
       },
     );
   },

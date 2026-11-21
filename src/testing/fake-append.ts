@@ -49,6 +49,10 @@ function snapshot(args: AppendCallArgs): AppendCallArgs {
 /**
  * Creates a fake generated `append` reducer binding.
  *
+ * @deprecated The browser no longer has an append binding. Use
+ * `createFakeCommand` for client tests. This remains only for consumers midway
+ * through the M15 migration.
+ *
  * It records each call, including a copy of the encoded event array, and resolves
  * with the configured result. Use `nextResult`/`nextError` for sequences such as
  * a timeout followed by a successful retry.
