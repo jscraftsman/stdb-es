@@ -1,12 +1,13 @@
 import { schema, t, table } from 'spacetimedb/server';
 import {
+  appendToStream,
   applyInline,
   esTables,
-  makeAppendReducer,
   makeStreamAtView,
   makeStreamHeadView,
   makeStreamView,
   type CtxOf,
+  type EsCtx,
   type InlineProjection,
 } from '../src/server/index.js';
 
@@ -78,28 +79,65 @@ const totalsProjection: InlineProjection<AppCtx> = {
 
 export const projections = [totalsProjection];
 
-export const appendEvents = makeAppendReducer(spacetimedb, {
-  eventTypes: ['Incremented', 'Decremented', 'Reset'],
-  onAppended: (ctx, result) => {
-    const streamId = result.rows[0]?.streamId;
-    if (!streamId) return;
-
-    const current = ctx.db.counterState.streamId.find(streamId);
-    let value = current?.value ?? 0n;
-    for (const row of result.rows) {
-      const event = decodeCounterEvent(row);
-      if (event.type === 'Incremented') value += BigInt(event.by);
-      else if (event.type === 'Decremented') value -= BigInt(event.by);
-      else value = 0n;
-    }
-
-    const next = { streamId, version: result.version, value };
-    if (current) ctx.db.counterState.streamId.update(next);
-    else ctx.db.counterState.insert(next);
-
-    applyInline(ctx, projections, result.rows);
+/**
+ * Test-only app reducer.
+ *
+ * The package no longer ships a generic append factory: real modules expose
+ * command reducers that call `appendToStream` themselves. This fixture keeps one
+ * generic target so the store's own tests and the published smoke module keep
+ * working until the integration kit migrates to command reducers.
+ */
+export const appendEvents = spacetimedb.reducer(
+  {
+    streamId: t.string(),
+    streamType: t.string(),
+    expectedVersion: t.i32(),
+    events: t.array(
+      t.object('EsEncodedEvent', {
+        eventId: t.string(),
+        eventType: t.string(),
+        data: t.string(),
+        metadata: t.option(t.string()),
+      }),
+    ),
+    metadata: t.option(t.string()),
   },
-});
+  (ctx, args) => {
+    const appCtx = ctx as unknown as AppCtx & EsCtx;
+    appendToStream(
+      appCtx,
+      {
+        streamId: args.streamId,
+        streamType: args.streamType,
+        expectedVersion: args.expectedVersion,
+        events: args.events,
+        metadata: args.metadata ?? null,
+      },
+      {
+        eventTypes: ['Incremented', 'Decremented', 'Reset'],
+        onAppended: (appendCtx, result) => {
+          const streamId = result.rows[0]?.streamId;
+          if (!streamId) return;
+
+          const current = appendCtx.db.counterState.streamId.find(streamId);
+          let value = current?.value ?? 0n;
+          for (const row of result.rows) {
+            const event = decodeCounterEvent(row);
+            if (event.type === 'Incremented') value += BigInt(event.by);
+            else if (event.type === 'Decremented') value -= BigInt(event.by);
+            else value = 0n;
+          }
+
+          const next = { streamId, version: result.version, value };
+          if (current) appendCtx.db.counterState.streamId.update(next);
+          else appendCtx.db.counterState.insert(next);
+
+          applyInline(appendCtx, projections, result.rows);
+        },
+      },
+    );
+  },
+);
 
 export const counterStream = makeStreamView(spacetimedb, {
   name: 'counter_stream',

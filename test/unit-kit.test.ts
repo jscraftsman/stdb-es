@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { AppendCallArgs } from '../src/client/index.js';
 import { ES_ERROR, NO_STREAM, buildEsErrorMessage } from '../src/index.js';
 import { readStream } from '../src/server/index.js';
 import {
@@ -7,6 +6,7 @@ import {
   createModuleTest,
   expectAppendError,
   ids,
+  type AppendCallArgs,
 } from '../src/testing/index.js';
 import { appendEvents, counterStream, spacetimedb } from './fixture.js';
 

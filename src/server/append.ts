@@ -1,5 +1,3 @@
-import type { Schema } from 'spacetimedb/server';
-import { t } from 'spacetimedb/server';
 import { ES_ERROR } from '../errors.js';
 import { esError } from './errors.js';
 import {
@@ -8,7 +6,6 @@ import {
   STREAM_EXISTS,
   type AppendArgs,
   type AppendResult,
-  type CtxOf,
   type EncodedEvent,
   type EventStoreConfig,
 } from './protocol.js';
@@ -194,49 +191,4 @@ export function appendToStream<C extends EsCtx>(
   // Runs in the same transaction, so a throwing hook rolls back the append.
   config.onAppended?.(ctx, result);
   return result;
-}
-
-/**
- * Builds the generic `append_events` reducer for the app to export.
- *
- * The reducer returns nothing (Spacetime reducers never do); clients observe the
- * new version through their subscription or a view.
- */
-export function makeAppendReducer<M extends Schema<any>>(
-  spacetimedb: M,
-  config: EventStoreConfig<CtxOf<M>> = {},
-) {
-  return spacetimedb.reducer(
-    {
-      streamId: t.string(),
-      streamType: t.string(),
-      expectedVersion: t.i32(),
-      events: t.array(
-        t.object('EsEncodedEvent', {
-          eventId: t.string(),
-          eventType: t.string(),
-          data: t.string(),
-          metadata: t.option(t.string()),
-        }),
-      ),
-      metadata: t.option(t.string()),
-    },
-    (ctx, args) => {
-      // The generic `reducer` call erases the schema type, so recover the
-      // concrete app context once here. The extra `& EsCtx` is for the store's
-      // own signature, which cannot see the app tables through `InferSchema`.
-      const appCtx = ctx as unknown as CtxOf<M> & EsCtx;
-      appendToStream(
-        appCtx,
-        {
-          streamId: args.streamId,
-          streamType: args.streamType,
-          expectedVersion: args.expectedVersion,
-          events: args.events,
-          metadata: args.metadata ?? null,
-        },
-        config,
-      );
-    },
-  );
 }

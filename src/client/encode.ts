@@ -1,5 +1,4 @@
 import { ES_ERROR } from '../errors.js';
-import type { EncodedEvent } from '../server/protocol.js';
 
 /** Minimal client-side view of an `es_event` row delivered by a view. */
 export type StoredEventRow = {
@@ -41,49 +40,16 @@ export type EventRegistry<TEvent> = {
 /**
  * Builds an event registry.
  *
- * The registry is client-side only: the server treats payloads as opaque JSON,
- * so adding an event type never requires a migration. What it does buy is a
- * single place to encode, upgrade and decode, shared by every client.
+ * The registry is used on the read path only: the server treats payloads as
+ * opaque JSON, so adding an event type never requires a migration. It gives
+ * clients one place to upgrade and decode stored rows. Writes never go through
+ * it; they are commands handled by server-side reducers.
  */
 export function createEventRegistry<TEvent>(input: {
   typeOf: (event: TEvent) => string;
   events: Record<string, EventDefinition<TEvent, any>>;
 }): EventRegistry<TEvent> {
   return { typeOf: input.typeOf, definitions: input.events };
-}
-
-export type EncodeOptions = {
-  /** Defaults to `crypto.randomUUID()`. */
-  newEventId?: () => string;
-  metadata?: string | null;
-};
-
-function defaultEventId(): string {
-  if (typeof globalThis.crypto?.randomUUID !== 'function') {
-    throw new Error('no crypto.randomUUID available; pass newEventId');
-  }
-  return globalThis.crypto.randomUUID();
-}
-
-/** Encodes domain events into the wire shape accepted by `append_events`. */
-export function encodeEvents<TEvent>(
-  registry: EventRegistry<TEvent>,
-  events: readonly TEvent[],
-  opts: EncodeOptions = {},
-): EncodedEvent[] {
-  return events.map((event) => {
-    const eventType = registry.typeOf(event);
-    const definition = registry.definitions[eventType];
-    if (!definition) {
-      throw new Error(`${ES_ERROR.UNKNOWN_EVENT_TYPE}: ${eventType}`);
-    }
-    return {
-      eventId: (opts.newEventId ?? defaultEventId)(),
-      eventType,
-      data: JSON.stringify(definition.encode(event)),
-      metadata: opts.metadata ?? null,
-    };
-  });
 }
 
 /** Decodes one stored row into its domain event. */

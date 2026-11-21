@@ -950,7 +950,7 @@ Actions run has not yet been observed.
 | M6 | **Consumer unit-test kit** (`stdb-es/testing`) | fake append, id helpers, module-test wrapper, and failure assertions shipped; 10 kit tests pass offline; a one-import, ~10-line consumer test needs no server | done |
 | M7 | **Consumer integration-test kit** (`stdb-es/testing/integration`) | one call creates, publishes, and tears down a disposable database; concurrency, subscription, and anonymous-view cases green locally and remotely | done |
 | M8 | **Developer documentation**: `docs/usage-guide.md`, `docs/API.md`, README glossary | all four guide parts present; every shipped export documented with inputs/outputs; README glossary links to both documents | documentation done |
-| M15 | **Backend-owned command writes** (breaking change; §18) | Phases 1–6 in §18.6 complete: no browser path can call a generic append; commands are declared in the module and mirrored by `spacetime generate`; counter reducers `increment`/`decrement`/`reset` enforce ownership; package, kits, examples, and docs migrated; full suite green | **planned — Phase 1 (requirements) in progress; implementation paused pending go signal** |
+| M15 | **Backend-owned command writes** (breaking change; §18) | Phases 1–6 in §18.6 complete: no browser path can call a generic append; commands are declared in the module and mirrored by `spacetime generate`; counter reducers `increment`/`decrement`/`reset` enforce ownership; package, kits, examples, and docs migrated; full suite green | **planned — Phases 1–2 complete; awaiting go signal for Phase 3** |
 
 M1 is the keystone: if dedupe/version/position ordering is wrong, everything downstream inherits it.
 M6 comes before M7: the fakes define the seams the integration kit exercises. M15 is separate from
@@ -1170,12 +1170,19 @@ proposed. "If necessary" is decided at the start of that phase, not assumed.
 
 | Phase | Scope | Exit criteria | Status |
 | --- | --- | --- | --- |
-| 1 | Requirements/plan docs — this document | Flaw, target contract, command payload rules, counter mapping, impact, and phases recorded; R9, M15, risk, and decision entries added | **in progress** |
-| 2 | Package source (`src/client`, `src/server`) | Browser-facing append/retry surface removed; `makeAppendReducer` no longer in the shipped write path; optional command-dispatch helper uses generated reducers; read/decode/subscribe helpers unchanged; typecheck, unit suite, build, pack check green | paused |
+| 1 | Requirements/plan docs — this document | Flaw, target contract, command payload rules, counter mapping, impact, and phases recorded; R9, M15, risk, and decision entries added | done |
+| 2 | Package source (`src/client`, `src/server`) | Browser-facing append/retry surface removed; `makeAppendReducer` no longer in the shipped write path; optional command-dispatch helper uses generated reducers; read/decode/subscribe helpers unchanged; typecheck, unit suite, build, pack check green | done |
 | 3 | Unit testing kit (`src/testing`) if necessary | Fake append seam replaced/augmented by a fake command dispatcher; contract suite adapted to command reducers; offline tests green | paused |
 | 4 | Integration testing kit (`src/testing/integration`) if necessary | Generic `append_events` calls in kit docs, tests, and smoke scripts replaced by command reducer calls; local and external URL modes green | paused |
 | 5 | Examples (`examples/counter`, `examples/sets/counter-with-frontend`) | No browser path can call a generic append; `increment`/`decrement`/`reset` module reducers validate ownership; command payload types come from generated bindings; example typechecks, unit tests, and integration tests green | paused |
 | 6 | Remaining docs (`usage-guide.md`, `API.md`, `README.md`, unit/integration guides, plan status) | No frontend-append snippets remain; command contract and new exports documented; phase status updated; markdown links/fences green | paused |
+
+**Phase 2 intermediate state.** The package's own gates are green: root `typecheck`, 118 offline
+unit tests (including the new command-client suite), clean `build`, and `check:pack`. Examples still
+import the removed APIs, so `example:typecheck`, `example:set:counter:typecheck`, and the publish
+smokes stay red **by design** until Phase 5 migrates them. Phase 2 kept the fixture module's
+test-only generic append reducer so the store's own harness tests and contract suite remain
+meaningful; the integration toolkit still targets it and migrates in Phase 4.
 
 Independent of M15, M9–M13 and M14 stay paused/deferred as recorded in §15.
 

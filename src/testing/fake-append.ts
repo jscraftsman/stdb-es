@@ -1,4 +1,21 @@
-import type { AppendCall, AppendCallArgs } from '../client/event-store.js';
+import type { EncodedEvent } from '../server/protocol.js';
+
+/**
+ * Test-only shapes for a generated append binding.
+ *
+ * These used to be imported from `stdb-es/client`, which no longer ships an
+ * append API. Keeping them local preserves `createFakeAppend` while the unit
+ * kit moves to command fakes in the next phase of the breaking change.
+ */
+export type AppendCallArgs = {
+  streamId: string;
+  streamType: string;
+  expectedVersion: number;
+  events: EncodedEvent[];
+  metadata: string | null;
+};
+
+export type AppendCall = (args: AppendCallArgs) => Promise<unknown>;
 
 export type FakeAppendOptions = {
   /** Value every call resolves with unless a queued reply is available. */

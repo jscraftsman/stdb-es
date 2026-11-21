@@ -41,7 +41,8 @@ export type AppendResult =
  *
  * Generic over the module's reducer context so hooks receive the app's full
  * context, including its own state-cache and projection tables, not just store
- * tables. `makeAppendReducer` infers it from the schema.
+ * tables. The app's command reducers pass their own `Ctx` when calling
+ * `appendToStream`.
  */
 export type EventStoreConfig<C = EsCtx> = {
   /**
