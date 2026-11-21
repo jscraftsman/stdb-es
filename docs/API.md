@@ -13,8 +13,8 @@ available yet.
 | --- | --- | --- |
 | `stdb-es` | module or client | Stable error codes, error helpers, the `streamId` helper, protocol types and constants |
 | `stdb-es/server` | SpacetimeDB module only | Tables, append/read, aggregates, repositories, projections, views, doctor |
-| `stdb-es/client` | browser or Node client | Registry, encoding, append client, row helpers, subscription query and event-row helpers |
-| `stdb-es/testing` | offline unit tests | Module/client helpers, harness shim, fixtures, contract suite |
+| `stdb-es/client` | browser or Node client | Command dispatch, event registry/codecs, row helpers, subscription query and event-row helpers |
+| `stdb-es/testing` | offline unit tests | Module/client helpers, command and legacy append fakes, harness shim, fixtures, contract suite |
 | `stdb-es/testing/integration` | Node-only integration tests | Disposable server/database lifecycle, CLI calls, SQL, subscriptions |
 
 Conventions used below:
@@ -141,24 +141,20 @@ public table containing raw events.
 | --- | --- | --- | --- |
 | `esError(code, detail)` | Throws a reducer-visible store error | `code: EsErrorCode`, `detail: string` | Throws `SenderError` with message `CODE: detail` |
 
-### 2.2 Appending
+### 2.2 Appending inside command reducers
+
+`appendToStream` is a **module-only** helper. Call it from app-owned command reducers that validate the
+command and `ctx.sender`, derive the stream id and events, and choose `expectedVersion`. Do not export
+a generic append reducer: every reducer a client can call is part of the app's public write surface.
 
 | Function | Purpose | Inputs | Output / throws |
 | --- | --- | --- | --- |
 | `appendToStream(ctx, args, config?)` | Validates and appends a batch in the caller's transaction | `ctx: C extends EsCtx`, `args: AppendArgs`, optional `EventStoreConfig<C>` | `AppendResult`. Throws the `ES_*` errors listed in §1.1. |
-| `makeAppendReducer(schema, config?)` | Builds the app's generic `append_events` reducer | `schema: M extends Schema`, optional `EventStoreConfig<CtxOf<M>>` | A reducer definition exported by the app. Calling the reducer returns `void`. |
 
-Generated reducer parameters are:
-
-```ts
-{
-  streamId: string;
-  streamType: string;
-  expectedVersion: number;
-  events: Array<{ eventId: string; eventType: string; data: string; metadata?: string | null }>;
-  metadata?: string | null;
-}
-```
+A command reducer derives `AppendArgs` itself. The browser sends only the command payload, including
+`commandId`; the module derives the stream id, event ids, event types, payloads, and expected version.
+See [§18.3 of the design record](event-sourcing-plan.md#183-command-payload-contract) for the command
+contract.
 
 Append order and guarantees:
 
@@ -269,48 +265,55 @@ The library exports no repair reducer. Expose one from your app behind an author
 
 ## 3. `stdb-es/client` — browser-safe client API
 
-### 3.1 Registry and encoding
+### 3.1 Registry and decoding
 
 | Symbol | Purpose | Inputs / fields | Output |
 | --- | --- | --- | --- |
 | `StoredEventRow` | Minimal row shape delivered by a view | `eventId`, `position: bigint`, `streamId`, `streamType`, `version`, `eventType`, `data: string`, optional `metadata`, `createdAtMicros` | Compile-time only. Extra generated-row fields are harmless. |
-| `DecodedEventRow<TEvent>` | Envelope plus domain event | `Omit<StoredEventRow, 'data'>` plus `event: TEvent` | Returned by `decode`/`decodeAll`/`sliceRows` |
+| `DecodedEventRow<TEvent>` | Envelope plus domain event | `Omit<StoredEventRow, 'data'>` plus `event: TEvent` | Returned by `decodeEvent` and `sliceRows` |
 | `EventDefinition<TEvent, TPayload>` | Codec for one event type | `encode(event): TPayload`, `decode(payload): TEvent`, optional `upgrade(payload: unknown): TPayload` | `upgrade` runs before `decode`; use it for old payload shapes |
-| `EventRegistry<TEvent>` | Map of event types to codecs | `typeOf(event): string`, `definitions: Record<string, EventDefinition>` | Shared by encode and decode paths |
+| `EventRegistry<TEvent>` | Map of event types to codecs | `typeOf(event): string`, `definitions: Record<string, EventDefinition>` | Read-side codec registry |
 | `createEventRegistry(input)` | Builds a registry | `{ typeOf, events }` | `EventRegistry<TEvent>` |
-| `EncodeOptions` | Encoding options | `newEventId?(): string`, `metadata?: string \| null` | `newEventId` defaults to `crypto.randomUUID()` |
-| `encodeEvents(registry, events, opts?)` | Encodes domain events to wire rows | Registry, events, options | `EncodedEvent[]` with JSON-stringified `data`. Throws `ES_UNKNOWN_EVENT_TYPE` for an unregistered type. |
 | `decodeEvent(registry, row)` | Decodes one stored row | Registry, `StoredEventRow` | `TEvent`. Throws `ES_UNKNOWN_EVENT_TYPE` for an unknown `eventType`. |
 | `ReadRowsOptions` | Filters for subscribed rows | `streamId?`, `fromVersion?`, `atVersion?`, `atTimestampMicros?`, `limit?` | Bounds intersect |
 | `sliceRows(rows, opts?)` | Filters and sorts decoded rows | `DecodedEventRow[]`, options | `DecodedEventRow[]` sorted by `version`; timestamps are compared only when present |
 
 The registry is client-side: the server stores opaque JSON. Adding an event type is an app/registry
-change, not a database migration.
+change, not a database migration. It is the codec for **reading** stored rows; browser writes use
+generated command reducers (§3.2). The `encode` field remains in `EventDefinition` for app-defined
+codecs, but the package no longer exports an `encodeEvents` helper.
 
-### 3.2 Append client
+### 3.2 Command client
+
+The browser-facing write surface is a set of generated command reducers. `createCommandClient` adds an
+idempotency key and dispatches intent; it never builds an event envelope.
 
 | Symbol | Purpose | Inputs / fields | Output |
 | --- | --- | --- | --- |
-| `AppendCallArgs` | Shape passed to the generated reducer callback | `streamId`, `streamType`, `expectedVersion: number`, `events: EncodedEvent[]`, `metadata: string \| null` | Compile-time only |
-| `AppendCall` | Reducer callback type | `(args: AppendCallArgs) => Promise<unknown>` | The resolved value is ignored |
-| `EventStoreClientOptions<TEvent>` | Client configuration | `append: AppendCall`, `registry`, optional `newEventId` | Compile-time only |
-| `AppendOptions` | Per-call options | `expectedVersion?`, `metadata?`, `newEventId?` | `expectedVersion` defaults to `ANY_VERSION` |
-| `createEventStoreClient(opts)` | Builds a thin append/decode client | Options above | Client object with the methods below |
-| `EventStoreClient<TEvent>` | Return type of `createEventStoreClient` | — | Compile-time only |
+| `CommandEnvelope<TCommand>` | A command plus its idempotency key | `TCommand & { commandId: string }` | Compile-time only |
+| `CommandCall<TCommand>` | Shape of a generated command reducer binding | `(command: CommandEnvelope<TCommand>) => Promise<unknown>` | The resolved value is ignored |
+| `CommandIdOptions` | Constructor options | Optional `newCommandId?: () => string` | Defaults to `crypto.randomUUID()` |
+| `WithCommandIdOptions` | Per-command options | `CommandIdOptions` plus optional `commandId?: string` | An explicit key reuses a pending command |
+| `newCommandId()` | Generates a fresh idempotency key | None | `string` from `crypto.randomUUID()` |
+| `withCommandId(command, options?)` | Adds a key without sending | Command object and options | `CommandEnvelope<TCommand>`; preserves an existing non-empty `commandId` |
+| `CommandCalls<TCommands>` | One generated reducer per command name | Map of names to `CommandCall` | Compile-time only |
+| `createCommandClient(calls, options?)` | Binds generated reducers into a dispatcher | `CommandCalls<TCommands>`, optional `CommandIdOptions` | `CommandClient<TCommands>` |
+| `CommandClient<TCommands>` | Return type of `createCommandClient` | — | Compile-time only |
 
 Methods on the returned client:
 
 | Method | Inputs | Output / behavior |
 | --- | --- | --- |
-| `encode(events, options?)` | Domain events, options | `EncodedEvent[]`. Does not send. Reuse the result with `retry`. |
-| `append(streamId, streamType, events, options?)` | Ids, domain events, options | `Promise<void>`. Encodes fresh ids and calls the injected append callback. |
-| `retry(streamId, streamType, encoded, options?)` | Ids, previously encoded batch, options | `Promise<void>`. Sends the same event ids verbatim so a committed-but-timed-out call deduplicates as `replayed`. |
-| `decode(row)` | `StoredEventRow` | `DecodedEventRow<TEvent>`; removes `data` and adds `event` |
-| `decodeAll(rows)` | `StoredEventRow[]` | `DecodedEventRow<TEvent>[]` |
-| `registry` | — | The registry passed at construction |
+| `prepare(name, command, options?)` | Command name, intent, optional key | `CommandEnvelope<TCommand>`. Does not send. Use this when the envelope must be persisted before dispatch. |
+| `send(name, envelope)` | Command name, prepared envelope | `Promise<void>`. Sends the envelope verbatim. |
+| `sendNew(name, command, options?)` | Command name, intent, optional key | `Promise<CommandEnvelope<TCommand>>`. Prepares, sends, and returns the envelope after a successful dispatch. |
 
-The append client itself owns no state and performs no subscription management. The separate
-subscription bridge in §3.4 can be used when a client needs live rows.
+A command contains only intent, such as `{ counterId, by }`. The module owns the stream id, event ids,
+event types, payloads, and expected version. A repeated `commandId` is resolved as an idempotent replay
+inside the module. Command failures propagate to the caller; there is no client-side append/retry helper
+because reducers return `void` and the resulting state arrives through subscriptions/views.
+
+The separate subscription bridge in §3.4 can be used when a client needs live rows.
 
 ### 3.3 Subscription query helpers
 
@@ -386,17 +389,24 @@ the contract suite. The other tooling in this entry is runner-agnostic. See the
 | --- | --- | --- | --- |
 | `createModuleTest(spacetimedb, moduleExports, options?)` | Creates a fresh offline module test | The module's default schema export, its reducer/view exports, and optional `auth`, `clock`, `rngSeed`, `moduleIdentity` | `ModuleTest` with `tx`, `call`, `view`, `anonymousView`, `harness`, `auth`, and `moduleExports` |
 | `ids(prefix, count)` | Builds deterministic event ids | Non-empty `prefix`; positive safe integer `count` | `string[]` of `${prefix}-1` … `${prefix}-count`; throws on invalid input or ids over 128 characters |
-| `expectAppendError(fn, code)` | Asserts a stable store failure | A sync or async callback and an `EsErrorCode` | `void` for sync callbacks; `Promise<void>` for async ones. Throws a plain `Error` when no error or a different code occurs. |
-| `createFakeAppend(options?)` | Fakes the generated append binding | Optional `result` or `error`; use `nextResult`/`nextError` for sequences | `FakeAppend` call function with `calls`, `lastCall`, `nextResult`, `nextError`, and `clear` |
+| `expectAppendError(fn, code)` | Asserts a stable store failure from a server-side seam | A sync or async callback and an `EsErrorCode` | `void` for sync callbacks; `Promise<void>` for async ones. Throws a plain `Error` when no error or a different code occurs. |
+| `createFakeCommand<TCommand>(options?)` | Fakes a generated command reducer binding | Optional `result` or `error`; use `nextResult`/`nextError` for sequences | `FakeCommand<TCommand>` call function with `calls`, `lastCall`, `nextResult`, `nextError`, and `clear` |
+| `createFakeAppend(options?)` | **Deprecated** migration aid for a generated append binding | Optional `result` or `error`; use `nextResult`/`nextError` for sequences | `FakeAppend` call function with `calls`, `lastCall`, `nextResult`, `nextError`, and `clear` |
+| `FakeCommandOptions`, `FakeCommand<TCommand>` | Command-fake types | — | Compile-time only |
+| `AppendCallArgs`, `AppendCall`, `FakeAppendOptions`, `FakeAppend` | Test-only types for the deprecated append fake | — | Compile-time only |
 
 Every context passed to `tx`, `call`, `view`, or `anonymousView` is wrapped with `withIndexRanges`, so
 the 2.15 harness behaves like the real host. `tx` commits when the body returns and rolls back when it
 throws. `call` looks up the reducer by export name. `view` and `anonymousView` call the supplied view
 function directly with the matching harness context type.
 
-`createFakeAppend` records one shallow snapshot per call, including a copied `events` array. Queued
-replies from `nextResult`/`nextError` are consumed first; afterwards the configured `result`/`error`
-(default: resolve `undefined`) applies. `clear()` empties `calls` but keeps the queue.
+`createFakeCommand` records one shallow snapshot of the intent payload per call, including
+`commandId`. Queued replies from `nextResult`/`nextError` are consumed first; afterwards the configured
+`result`/`error` (default: resolve `undefined`) applies. `clear()` empties `calls` but keeps the queue.
+It never sees a stream id, event, or expected version.
+
+`createFakeAppend` has the same call-recording behavior for consumers midway through the breaking
+change, but the browser no longer has an append binding. Use `createFakeCommand` for new client tests.
 
 ### 4.2 Harness shim and fixtures
 
@@ -418,15 +428,21 @@ production host is unaffected; do not add the wrapper to module code.
 | `ContractStream.sample` | Fixture events and expected state | `wire(streamId): EncodedEvent[]` with deterministic ids; `domain(streamId): TEvent[]`; `expectedState: TState`; optional `corrupt(state): TState` |
 | `ContractProjections` | Optional projection check | `projections: readonly InlineProjection[]`, `snapshot(ctx): unknown` in stable order |
 | `ContractView` | Optional view check | `name`, `view`, `params(streamId)`, optional `seed(ctx, streamId)`, `check(result, streamId)` |
-| `EventStoreContractOptions` | Suite configuration | `name?`, `spacetimedb`, `moduleExports?`, `append`, `streams`, `projections?`, `views?`, `streamId?(stream)` |
+| `ContractCommands<TCommand>` | Optional browser-boundary check | `name`, `command(streamId, commandId)`, optional `authorize(ctx, streamId)`, `version(ctx, streamId)` |
+| `EventStoreContractOptions` | Suite configuration | `name?`, `spacetimedb`, `moduleExports?`, `append`, `streams`, `commands?`, `projections?`, `views?`, `streamId?(stream)` |
 
 | Function | Purpose | Inputs | Output / behavior |
 | --- | --- | --- | --- |
 | `runEventStoreContractTests(options)` | Registers the shared contract suite | Options above | `void`; registers Vitest `describe`/`it` cases at call time. Each case builds a fresh harness and wraps contexts with `withIndexRanges`. |
 
+The required `append` option is a **server-side write seam** used to seed store invariants, not a
+browser API. When `commands` is supplied, `name` must be exported through `moduleExports`; the suite
+then checks single-append command handling, `commandId` replay, and — when `authorize` is present —
+rejection of a sender without an ownership row.
+
 Covered invariants: append/read ordering, gapless positions, stale-version rejection with fresh ids,
 idempotent replay, repository/cache agreement, structural integrity, time travel, same-version drift
-detection and repair, projection rebuild parity, and view output.
+detection and repair, projection rebuild parity, view output, and the optional command boundary.
 
 For stale-version tests, generate **fresh** event ids. Dedupe runs before the version check, so
 resubmitting identical ids is a valid replay even when `expectedVersion` is stale.

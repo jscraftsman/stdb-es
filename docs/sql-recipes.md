@@ -25,7 +25,8 @@ spacetime sql stdb-es-counter -s local --anonymous "SELECT * FROM counter_summar
 ```
 
 `-s` must come before the query. For reducers the same is true, and `-s` must also come before
-`--`: `spacetime call <db> append_events -s local -- <args...>`.
+`--`: `spacetime call stdb-es-counter increment -s local -- '1' 1 'cmd-1'`. The counter example's
+command reducer takes `counterId`, `by`, then `commandId` in that order.
 
 ## What server-side SQL supports
 

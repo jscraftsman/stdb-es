@@ -64,19 +64,19 @@ change the design, so they are recorded here rather than quietly edited.
 | ID | Requirement | Acceptance criteria |
 | --- | --- | --- |
 | **R1** | **Core package unit tests** | Every public export in `.`, `./server`, and `./client` has direct coverage; all ten workshop modules have a named test; the contract suite is dogfooded against the counter fixture; `npm test` is green with no live server. |
-| **R2** | **Consumer unit-test tools** | `stdb-es/testing` gives a consumer everything needed to test *their* module and client without a server: harness wrapper, wire fixtures, deterministic event ids, append-error assertions, contract suite, and a fake `append` for client-side tests. No network, no Node built-ins, runner-agnostic except for the optional `vitest` peer used by the contract suite. |
+| **R2** | **Consumer unit-test tools** | `stdb-es/testing` gives a consumer everything needed to test *their* module and client without a server: harness wrapper, wire fixtures, deterministic ids, append-error assertions for server-side seams, a contract suite with optional command-boundary checks, and a fake `command` binding for client-side tests. `createFakeAppend` remains only as a deprecated migration aid. No network, no Node built-ins, runner-agnostic except for the optional `vitest` peer used by the contract suite. |
 | **R3** | **Consumer integration-test tools** | A Node-only entry, `stdb-es/testing/integration`, that publishes a module to a disposable database, calls reducers, runs owner and anonymous SQL, connects clients, waits for subscription convergence, and tears down. Works against `spacetime start` locally and a remote server, with no hard dependency on `vitest`. |
-| **R4** | **Package Usage Guide** | `docs/usage-guide.md` with four parts — module, client, testing, frontend. It explains domain-separated module/client layouts, app-owned constants (`<SCOPE>_<DOMAIN>`), identity vs explicit `encode`, shared `streamId` ownership rules, retries, time travel, cache recovery, authorization, and all three consumer test layers. |
+| **R4** | **Package Usage Guide** | `docs/usage-guide.md` with four parts — module, client, testing, frontend. It explains domain-separated module/client layouts, app-owned constants (`<SCOPE>_<DOMAIN>`), read-side codecs, shared `streamId` ownership rules, `commandId` idempotency, time travel, cache recovery, authorization, and all three consumer test layers. |
 | **R5** | **CI gate for the above** | CI runs library and example typechecks, the offline unit suite, a disposable-server publish smoke test, and — once R3 lands — the consumer integration suite. A failure in any layer blocks merge. |
 | **R6** | **API reference** | `docs/API.md` documents every export from `.`, `./server`, `./client`, and `./testing` with its purpose, inputs/payload, and output/guarantees. Planned APIs are listed separately and never presented as shipped. |
 | **R7** | **README glossary** | `README.md` defines the consumer-facing terms used by the API and guides: stream, event envelope, version, expected version, position, state cache, version guard, projection, view, upcast, domain, cross-aggregate, and the other terms used by the consumer API. |
 | **R8** | **Example sets** | Each planned set contains a publishable module plus a simple React client with a basic UI. The sets cover idempotency, eventual consistency, cross-aggregate coordination, multiple domains, and schema evolution with minimal concept overlap. Implementation waits for an explicit go signal. |
-| **R9** | **Backend-owned command writes** (planned breaking change; §18, M15) | Browser code never builds an event envelope (`streamId`, `streamType`, `eventType`, `data`, `expectedVersion`) and never calls a generic append. It calls **app-defined public command reducers** with a typed command payload plus an idempotency key; only those reducers validate authorization and call `appendToStream`. Commands are declared in the module and mirrored to the frontend by `spacetime generate`. The generic `append_events` reducer is not part of the callable app surface. Counter examples expose `increment`, `decrement`, and `reset`. Rollout is phased (§18.6) and starts only on an explicit go signal. |
+| **R9** | **Backend-owned command writes** (breaking change; §18, M15) | Browser code never builds an event envelope (`streamId`, `streamType`, `eventType`, `data`, `expectedVersion`) and never calls a generic append. It calls **app-defined public command reducers** with a typed command payload plus an idempotency key; only those reducers validate authorization and call `appendToStream`. Commands are declared in the module and mirrored to the frontend by `spacetime generate`. The generic `append_events` reducer is not part of the callable app surface. Counter examples expose `increment`, `decrement`, and `reset`. Rollout is complete after the six phases in §18.6. |
 
-> **Planned breaking change.** R9 supersedes the client `append`/`retry` surface in §13 and the
-> `makeAppendReducer` factory in §4 once M15 is implemented. It does **not** rewrite shipped M0–M8
-> behavior; those milestones stay as historical record. The full requirement, rationale, and
-> rollout are specified in §18.
+> **Implemented breaking change.** R9 supersedes the client `append`/`retry` surface in §13 and the
+> `makeAppendReducer` factory in §4. It does **not** rewrite shipped M0–M8 behavior; those milestones
+> stay as historical record, while active guides document the command contract. The full requirement,
+> rationale, and rollout are specified in §18.
 
 ---
 
@@ -825,10 +825,11 @@ createStreamSubscription({ connection, query(streamId), readRows, onRows });
   `onError` or rethrows them. `createStreamSubscription` keeps one per-stream query active and ignores
   stale callbacks after a switch.
 - The client entry is browser-safe; integration-test tooling is a separate Node-only entry (R3).
-- **Planned breaking change (R9 / M15 / §18):** the `append`/`retry` path above and the generic
+- **Superseded by R9 / M15 / §18 (implemented):** the `append`/`retry` path above and the generic
   `makeAppendReducer` factory are removed from the browser-facing write path. Frontend code calls
   generated command reducers with a typed command payload; decoding, upcasting, subscriptions, and
-  `sliceRows` remain unchanged.
+  `sliceRows` remain unchanged. This bullet records the baseline that M15 replaced; it does not alter
+  the M0–M8 history.
 
 ---
 
@@ -950,7 +951,7 @@ Actions run has not yet been observed.
 | M6 | **Consumer unit-test kit** (`stdb-es/testing`) | fake append, id helpers, module-test wrapper, and failure assertions shipped; 10 kit tests pass offline; a one-import, ~10-line consumer test needs no server | done |
 | M7 | **Consumer integration-test kit** (`stdb-es/testing/integration`) | one call creates, publishes, and tears down a disposable database; concurrency, subscription, and anonymous-view cases green locally and remotely | done |
 | M8 | **Developer documentation**: `docs/usage-guide.md`, `docs/API.md`, README glossary | all four guide parts present; every shipped export documented with inputs/outputs; README glossary links to both documents | documentation done |
-| M15 | **Backend-owned command writes** (breaking change; §18) | Phases 1–6 in §18.6 complete: no browser path can call a generic append; commands are declared in the module and mirrored by `spacetime generate`; counter reducers `increment`/`decrement`/`reset` enforce ownership; package, kits, examples, and docs migrated; full suite green | **planned — Phases 1–5 complete; awaiting go signal for Phase 6** |
+| M15 | **Backend-owned command writes** (breaking change; §18) | Phases 1–6 in §18.6 complete: no browser path can call a generic append; commands are declared in the module and mirrored by `spacetime generate`; counter reducers `increment`/`decrement`/`reset` enforce ownership; package, kits, examples, and docs migrated; full suite green | **done — Phases 1–6 complete** |
 
 M1 is the keystone: if dedupe/version/position ordering is wrong, everything downstream inherits it.
 M6 comes before M7: the fakes define the seams the integration kit exercises. M15 is separate from
@@ -1014,7 +1015,7 @@ recorded here; the implemented full-stack baseline does not start that sequence.
 | Reducers return nothing | Client observes the new version via subscription/view. |
 | Subscription args are literals | Helpers validate and escape; use table queries for dynamic filters on materialized models. |
 | Stream id ownership | `streamId(prefix, key)` only formats/validates. Client-generated ids need module validation; module-generated ids require a view for discovery because reducers return void. Hybrid command ids are the recommended default. |
-| **Client-shaped events / cross-stream writes** | **Security flaw in the shipped frontend write path (§18).** Reducers are public callables; a browser calling a generic append can choose `streamId`, `eventType`, and `data`. Fix: remove that surface, send commands to backend-owned reducers, derive stream ids and events server-side, and authorize against `ctx.sender`. Tracked as M15/R9; not yet implemented. |
+| **Client-shaped events / cross-stream writes** | **Security flaw in the original frontend write path (§18), fixed by M15/R9.** Reducers are public callables; a browser calling a generic append can choose `streamId`, `eventType`, and `data`. The fix removes that surface, sends commands to backend-owned reducers, derives stream ids and events server-side, and authorizes against `ctx.sender`. |
 | Event table growth | Minimal indexes, tiered storage, never delete history; archival is an app decision. |
 | Determinism | No clock/RNG/network. `ctx.timestamp`, `ctx.sender`, `ctx.random` only. |
 | Library bundle size | Server entry depends only on `spacetimedb/server`; helpers tree-shakeable. |
@@ -1040,18 +1041,18 @@ Resolved in v1:
 
 Still open: none at this time.
 
-**Implemented through Phase 5 (M15, §18):** the frontend append path is replaced by backend-owned
-command reducers. The browser sends an intent payload (command + idempotency key); the module decides
-stream id, event types, event ids, authorization, and expected version, then appends. Commands are
-declared in the module and mirrored to the frontend through `spacetime generate`. This is breaking:
+**Implemented in M15 (§18):** the frontend append path is replaced by backend-owned command reducers.
+The browser sends an intent payload (command + idempotency key); the module decides stream id, event
+types, event ids, authorization, and expected version, then appends. Commands are declared in the
+module and mirrored to the frontend through `spacetime generate`. This is breaking:
 `makeAppendReducer`, `createEventStoreClient`'s `append`/`retry`, and every generic `append_events`
-call site are superseded. Remaining documentation migration is tracked in Phase 6.
+call site are superseded. Active guides and the API reference document the command contract.
 
 ---
 
 ## 18. Frontend write boundary: commands instead of append (R9 / M15)
 
-**Status: requirement defined in Phase 1; implementation complete through Phase 5, with documentation migration remaining in Phase 6.**
+**Status: complete — requirement, implementation, examples, tooling, and documentation migrated through Phase 6.**
 This section is the authoritative statement of the change. It does not alter the shipped M0–M8
 record in §13–§17; it defines the breaking change that supersedes parts of it when delivered.
 
@@ -1160,7 +1161,7 @@ surfaces, all owned by phases in §18.6:
 - `stdb-es/testing/integration` and smoke scripts: `env.call('append_events', ...)` — migrated in
   Phase 4 to command reducer calls against a publishable command fixture.
 - Examples and their README suites — migrated in Phase 5. `docs/API.md` / `docs/usage-guide.md` /
-  integration and unit guides, plus `README.md` scripts, remain for Phase 6.
+  integration and unit guides, plus `README.md` scripts — migrated in Phase 6.
 
 Read-side helpers (`decode`, upcasters, `sliceRows`, subscriptions, views, `viewQuery`,
 `tableQuery`) are intentionally unaffected.
@@ -1177,7 +1178,7 @@ proposed. "If necessary" is decided at the start of that phase, not assumed.
 | 3 | Unit testing kit (`src/testing`) if necessary | Fake append seam replaced/augmented by a fake command dispatcher; contract suite adapted to command reducers; offline tests green | done |
 | 4 | Integration testing kit (`src/testing/integration`) if necessary | Generic `append_events` calls in kit docs, tests, and smoke scripts replaced by command reducer calls; local and external URL modes green | done |
 | 5 | Examples (`examples/counter`, `examples/sets/counter-with-frontend`) | No browser path can call a generic append; `increment`/`decrement`/`reset` module reducers validate ownership; command payload types come from generated bindings; example typechecks, unit tests, and integration tests green | done |
-| 6 | Remaining docs (`usage-guide.md`, `API.md`, `README.md`, unit/integration guides, plan status) | No frontend-append snippets remain; command contract and new exports documented; phase status updated; markdown links/fences green | paused |
+| 6 | Remaining docs (`usage-guide.md`, `API.md`, `README.md`, unit/integration guides, plan status) | No frontend-append snippets remain; command contract and new exports documented; phase status updated; markdown links/fences green | done |
 
 **Phase 2 intermediate state.** The package's own gates are green: root `typecheck`, 118 offline
 unit tests (including the new command-client suite), clean `build`, and `check:pack`. Examples still
@@ -1208,6 +1209,13 @@ different `ctx.sender`. The React client imports command payload types from `spa
 output and dispatches through `createCommandClient`; generic append bindings were removed. Offline
 module tests, web command tests, the five-test live integration suite, `example:set:counter:publish`
 (preserving data), `publish-clean`, and the 19-check publish smoke all pass.
+
+**Phase 6 completion state.** Active documentation now describes the command write contract only.
+`README.md`, `docs/API.md`, `docs/usage-guide.md`, and `docs/unit testing.md` use generated command
+reducers, `createCommandClient`, `createFakeCommand`, and the contract suite's optional `commands`
+check. Server-only `appendToStream` remains documented as a module seam; `createFakeAppend` is marked
+deprecated. `docs/integration testing.md` needed no further migration. The plan status and M15 row
+are complete, and the markdown link/fence check is green.
 
 Independent of M15, M9–M13 and M14 stay paused/deferred as recorded in §15.
 

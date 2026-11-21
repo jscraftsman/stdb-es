@@ -239,7 +239,7 @@ running in CI.
 
 This kit covers real-server lifecycle, network reducers, SQL, and subscriptions. It does not replace:
 
-- the offline [Unit testing guide](unit%20testing.md) for reducers, aggregates, and fake appends;
+- the offline [Unit testing guide](unit%20testing.md) for command reducers, aggregates, and fake commands;
 - the [Usage guide](usage-guide.md#36-integration-tests) for library-level smoke recipes;
 - the maintainer `npm run smoke` and `npm run smoke:integration` scripts, which dogfood this kit in
   the repository CI gate;

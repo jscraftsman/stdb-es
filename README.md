@@ -8,7 +8,7 @@ SpacetimeDB is the whole backend. The module is the application server, reducers
 and views are the client read path. `stdb-es` adds the event-sourcing half without asking you to run
 a second database, a message broker, or a separate read-model store.
 
-> **Status: 0.1.1, pre-release.** The API may change. Requires `spacetimedb >= 2.15 < 3`.
+> **Status: 0.4.0, pre-release.** The API may change. Requires `spacetimedb >= 2.15 < 3`.
 > JSON event payloads are the only implemented mode; typed-enum payloads are designed but not
 > shipped yet. TypeScript server modules only.
 
@@ -39,6 +39,9 @@ These are not conventions; the library and its tests are built around them.
 4. **A state cache is not a snapshot.** It is a current-state projection written in the same
    transaction as the events it summarizes. Deleting it costs a replay, as long as a missing cache is
    rebuilt from the log rather than treated as empty state.
+5. **Writes are commands, not event envelopes.** Public reducers accept a command payload plus a
+   `commandId`. The module derives stream ids, event ids, event types, data, authorization, and
+   expected versions. Browser code never calls a generic append.
 
 ## Glossary
 
@@ -49,21 +52,21 @@ These are the terms used by the API and the guides. "Server" means SpacetimeDB m
 | --- | --- |
 | **App-owned constants** | Per-domain `constants.ts` exports (`STREAM_TYPES_*`, `STREAM_PREFIXES_*`, `EVENT_TYPES_*`, `TABLES_*`, `VIEWS_*`, `ROWS_*`) for literals the app owns. The core package never exports them. |
 | **Stream** | One append-only sequence of events for one business object or process, identified by a stream id. It is the unit of optimistic concurrency. |
-| **Stream id** | The caller-supplied primary key of a stream, for example `streamId(STREAM_PREFIXES_ORDER.order, '42')`. The same id must always use the same stream type. Use the shared helper to format and validate it. |
+| **Stream id** | The primary key of a stream, for example `streamId(STREAM_PREFIXES_ORDER.order, '42')`. The same id must always use the same stream type. Command modules derive it from validated intent; clients may format the same id for read-side queries only. |
 | **Stream id helper** | `streamId(prefix, key)` from `stdb-es`: builds `<prefix>-<key>`, rejects unsafe characters, and enforces the 256-character limit. Formatting only — ownership is still an app decision. |
 | **Stream type** | The aggregate/process kind recorded on a stream, such as `STREAM_TYPES_ORDER.Order`. It lets one module host many kinds of streams. |
 | **Event** | A fact that has happened. It is stored as an immutable row in the private `es_event` table. |
 | **Event envelope** | The stable stored columns around the payload: `eventId`, `position`, `streamId`, `streamType`, `version`, `eventType`, `metadata`, timestamps, and sender. |
-| **Event id** | A globally unique id supplied by the caller. The primary key on `es_event.eventId` is what makes retries idempotent. Generate a fresh one for each genuinely new event; reuse the same ones when retrying a batch. |
+| **Event id** | A globally unique id stored on `es_event`. Command reducers derive it deterministically from `commandId`, so a retried command is an idempotent replay. Server-side fixtures and repositories may generate their own ids. |
 | **Event type** | The string that selects a codec in the client registry, such as `EVENT_TYPES_COUNTER.Incremented`. It is not the stream type. |
 | **Payload / `data`** | The JSON-serializable body of an event, stored as canonical JSON in a string column. The server validates that it is JSON but does not interpret its shape. |
 | **Metadata** | Optional JSON-or-text context attached to an append or an individual event. The store carries it without interpreting it. |
 | **Version** | The 1-based position of an event inside one stream. The stream's current version is its concurrency token. |
-| **Expected version** | The version the caller believes is current. The append fails with `ES_EXPECTED_VERSION_MISMATCH` if the belief is wrong. |
+| **Expected version** | The version passed to the server-only `appendToStream`. A command reducer chooses it (often from `streamVersion`); browsers never send one. A mismatch throws `ES_EXPECTED_VERSION_MISMATCH`. |
 | **Sentinel** | A special `expectedVersion` value: `ANY_VERSION` (-1) skips the check, `NO_STREAM` (0) requires a new stream, and `STREAM_EXISTS` (-2) requires an existing one. |
 | **Position** | A gapless, commit-ordered number assigned to every event across the whole database. It is the cursor for rebuilds, not a per-stream version. |
 | **Head** | The single counter that assigns positions. It lives in the private `es_head` table and is updated in the append transaction. |
-| **Append** | The write operation: validate, deduplicate, check concurrency, insert events, advance the head and stream version, then run hooks. All of it is one transaction. |
+| **Append** | The module-internal write operation: validate, deduplicate, check concurrency, insert events, advance the head and stream version, then run hooks. All of it is one transaction. |
 | **Replay** | Reading a stream and folding its events into state, either in full or from a given version onward. A missing state cache must be recovered by replay. |
 | **Dedupe** | Detecting that an event id was already committed. A whole repeated batch returns `replayed`; a partial repeat is rejected because it is ambiguous. |
 | **`appended` vs `replayed`** | The two `AppendResult` statuses. `appended` means new rows were written; `replayed` means the identical batch had already committed. Hooks run only for `appended`. |
@@ -78,12 +81,13 @@ These are the terms used by the API and the guides. "Server" means SpacetimeDB m
 | **Read model** | Client-visible query output: an app-owned view over events/cache tables, or a materialized table maintained by a projection. |
 | **Subscription** | A client query whose results are pushed as rows change. `viewQuery()` and `tableQuery()` build the SQL strings used by SpacetimeDB subscriptions. |
 | **Upcast / `upgrade`** | Converting an old stored payload to the current shape before decoding. This is how schema evolution avoids rewriting the event log. |
-| **Registry** | The client-side map from event type strings to codecs (`encode`, `decode`, optional `upgrade`). It is shared by append and decode paths. |
+| **Registry** | The client-side map from event type strings to codecs (`encode`, `decode`, optional `upgrade`). It is the read/decode codec; browser writes use generated command payload types. |
 | **Domain / bounded context** | A business boundary with its own event types, aggregates, caches, and views. In a multi-domain app, group code by domain and share ids, not event unions. |
 | **Cross-aggregate** | An operation that coordinates more than one aggregate stream. Model it with a process stream and deterministic commands, not a transaction spanning unrelated aggregates. |
-| **Optimistic concurrency** | Assuming no conflict, appending with an expected version, and failing loudly if another writer won. Retrying with fresh event ids is the recovery path. |
+| **Optimistic concurrency** | The module appends with an expected version and fails loudly if another writer won. The browser sees the resulting state through a subscription; its retry key is `commandId`, not an event id or version. |
 | **Time travel** | Reading state or events as of a version or processing timestamp. Timestamp bounds intersect with version bounds; version is the authoritative order. |
-| **Command / reducer** | The server write path. A reducer receives arguments, loads or creates an aggregate, decides events, and appends them. |
+| **Command** | An intent payload sent to a public command reducer, always including `commandId`. It contains no stream id, event, or expected version. |
+| **Command reducer** | The server write path. It validates intent and `ctx.sender`, derives the stream and events, then appends them. Its generated binding is the client's only write surface. |
 | **Contract test** | A suite from `stdb-es/testing` that runs the app's real module through the harness and checks append, cache, projection, and view invariants. |
 
 ## Install
@@ -96,7 +100,7 @@ npm install stdb-es spacetimedb
 
 ## Quick start
 
-### 1. Module: tables, append reducer, state cache
+### 1. Module: command reducers, ownership, and state cache
 
 ```ts
 // spacetimedb/src/domains/counter/constants.ts
@@ -120,18 +124,23 @@ export const ROWS_COUNTER = { totals: 'global' } as const;
 
 // spacetimedb/src/index.ts
 import { schema, t, table } from 'spacetimedb/server';
+import { streamId as makeStreamId } from 'stdb-es';
 import {
   applyInline,
+  appendToStream,
   esTables,
-  makeAppendReducer,
   readStream,
+  streamVersion,
+  type AppendResult,
   type CtxOf,
+  type EsCtx,
   type InlineProjection,
   type StateCache,
 } from 'stdb-es/server';
 import {
   EVENT_TYPES_COUNTER,
   ROWS_COUNTER,
+  STREAM_PREFIXES_COUNTER,
   STREAM_TYPES_COUNTER,
   TABLES_COUNTER,
 } from './domains/counter/constants.js';
@@ -166,7 +175,9 @@ const counterOwner = table(
 export const spacetimedb = schema({ ...esTables, counterState, counterTotals, counterOwner });
 export default spacetimedb;
 
-const totals: InlineProjection<CtxOf<typeof spacetimedb>> = {
+type Ctx = CtxOf<typeof spacetimedb> & EsCtx;
+
+const totals: InlineProjection<Ctx> = {
   name: TABLES_COUNTER.totals,
   handles: [EVENT_TYPES_COUNTER.Incremented, EVENT_TYPES_COUNTER.Decremented],
   handle: (ctx, row) => {
@@ -218,96 +229,156 @@ function replayCounter(ctx: CtxOf<typeof spacetimedb>, streamId: string): bigint
   return value;
 }
 
-export const appendEvents = makeAppendReducer(spacetimedb, {
-  // Reject unregistered event types at write time instead of storing garbage.
-  eventTypes: [
-    EVENT_TYPES_COUNTER.Incremented,
-    EVENT_TYPES_COUNTER.Decremented,
-    EVENT_TYPES_COUNTER.Reset,
-  ],
-  // Runs in the same transaction, only for genuinely new events.
-  onAppended: (ctx, result) => {
-    const streamId = result.rows[0]?.streamId;
-    if (!streamId) return;
+const EVENT_TYPES = [
+  EVENT_TYPES_COUNTER.Incremented,
+  EVENT_TYPES_COUNTER.Decremented,
+  EVENT_TYPES_COUNTER.Reset,
+] as const;
 
-    const current = ctx.db.counterState.streamId.find(streamId);
-    if (current) {
-      const value = result.rows.reduce(
-        (state, row) => applyEvent(state, JSON.parse(row.data) as CounterEvent),
-        current.value,
-      );
-      ctx.db.counterState.streamId.update({ streamId, version: result.version, value });
-    } else {
-      // A missing cache row means "replay", never "state is empty". `onAppended`
-      // runs after the write, so this replay already includes the new rows.
-      const value = replayCounter(ctx, streamId);
-      ctx.db.counterState.insert({ streamId, version: result.version, value });
+/** Runs in the append transaction, only for genuinely new events. */
+function onAppended(ctx: Ctx, result: AppendResult): void {
+  const streamId = result.rows[0]?.streamId;
+  if (!streamId) return;
+
+  const current = ctx.db.counterState.streamId.find(streamId);
+  if (current) {
+    const value = result.rows.reduce(
+      (state, row) => applyEvent(state, JSON.parse(row.data) as CounterEvent),
+      current.value,
+    );
+    ctx.db.counterState.streamId.update({ streamId, version: result.version, value });
+  } else {
+    // A missing cache row means "replay", never "state is empty". `onAppended`
+    // runs after the write, so this replay already includes the new rows.
+    const value = replayCounter(ctx, streamId);
+    ctx.db.counterState.insert({ streamId, version: result.version, value });
+  }
+
+  applyInline(ctx, [totals], result.rows);
+}
+
+function assertCommand(command: { commandId: string }): void {
+  if (!command.commandId) throw new Error('CMD_INVALID_COMMAND: commandId is required');
+}
+
+/** Derives the stream id from intent and checks the caller. */
+function authorize(ctx: Ctx, counterId: string): string {
+  const stream = makeStreamId(STREAM_PREFIXES_COUNTER.counter, counterId);
+  const owner = ctx.db.counterOwner.streamId.find(stream);
+  if (owner) {
+    if (!owner.owner.equals(ctx.sender)) {
+      throw new Error('CMD_UNAUTHORIZED: sender does not own this counter');
     }
+    return stream;
+  }
 
-    applyInline(ctx, [totals], result.rows);
+  ctx.db.counterOwner.insert({ streamId: stream, owner: ctx.sender });
+  return stream;
+}
+
+function appendCommand(
+  ctx: Ctx,
+  command: { counterId: string; commandId: string },
+  eventType: (typeof EVENT_TYPES)[number],
+  eventIdPrefix: string,
+  by?: number,
+): void {
+  assertCommand(command);
+  const stream = authorize(ctx, command.counterId);
+  const data: CounterEvent =
+    by === undefined
+      ? { kind: EVENT_TYPES_COUNTER.Reset }
+      : eventType === EVENT_TYPES_COUNTER.Decremented
+        ? { kind: EVENT_TYPES_COUNTER.Decremented, by }
+        : { kind: EVENT_TYPES_COUNTER.Incremented, by };
+
+  appendToStream(
+    ctx,
+    {
+      streamId: stream,
+      streamType: STREAM_TYPES_COUNTER.Counter,
+      // The module chooses the version; the browser never sends one.
+      expectedVersion: streamVersion(ctx, stream),
+      events: [
+        {
+          // Deterministic from commandId, so a retry is an idempotent replay.
+          eventId: `${eventIdPrefix}-${command.commandId}`,
+          eventType,
+          data: JSON.stringify(data),
+        },
+      ],
+    },
+    { eventTypes: EVENT_TYPES, onAppended },
+  );
+}
+
+/** The only public write surface. No generic `append_events` reducer is exported. */
+export const increment = spacetimedb.reducer(
+  { counterId: t.string(), by: t.u32(), commandId: t.string() },
+  (ctx, command) => {
+    if (command.by === 0) throw new Error('CMD_INVALID_COMMAND: by must be greater than zero');
+    appendCommand(ctx, command, EVENT_TYPES_COUNTER.Incremented, 'inc', command.by);
   },
-});
-```
-
-The reducer is generic: its wire signature is
-`append_events(stream_id, stream_type, expected_version, events, metadata)`. Reducers return nothing;
-clients observe the new version through their subscription or a view.
-
-### 2. Client: encode, append, retry
-
-```ts
-import { NO_STREAM, streamId } from 'stdb-es';
-import { createEventRegistry, createEventStoreClient } from 'stdb-es/client';
-// The same app-owned constants, shared or mirrored across module and web.
-import {
-  EVENT_TYPES_COUNTER,
-  STREAM_PREFIXES_COUNTER,
-  STREAM_TYPES_COUNTER,
-} from './constants.js';
-
-type CounterEvent =
-  | { kind: typeof EVENT_TYPES_COUNTER.Incremented; by: number }
-  | { kind: typeof EVENT_TYPES_COUNTER.Decremented; by: number }
-  | { kind: typeof EVENT_TYPES_COUNTER.Reset };
-
-const registry = createEventRegistry<CounterEvent>({
-  typeOf: (event) => EVENT_TYPES_COUNTER[event.kind],
-  events: {
-    [EVENT_TYPES_COUNTER.Incremented]: {
-      encode: (event) => event,
-      decode: (payload: any) => ({ kind: EVENT_TYPES_COUNTER.Incremented, by: payload.by }),
-    },
-    [EVENT_TYPES_COUNTER.Decremented]: {
-      encode: (event) => event,
-      decode: (payload: any) => ({ kind: EVENT_TYPES_COUNTER.Decremented, by: payload.by }),
-    },
-    [EVENT_TYPES_COUNTER.Reset]: {
-      encode: (event) => event,
-      decode: () => ({ kind: EVENT_TYPES_COUNTER.Reset }),
-    },
-  },
-});
-
-const store = createEventStoreClient({
-  // Generated binding, passed in so the client has no generated-code dependency.
-  append: (args) => connection.reducers.appendEvents(args),
-  registry,
-});
-
-const id = streamId(STREAM_PREFIXES_COUNTER.counter, '1');
-
-// Optimistic concurrency: NO_STREAM requires a new stream.
-await store.append(
-  id,
-  STREAM_TYPES_COUNTER.Counter,
-  [{ kind: EVENT_TYPES_COUNTER.Incremented, by: 5 }],
-  { expectedVersion: NO_STREAM },
 );
 
-// Encode once, retry verbatim: event ids make the retry idempotent.
-const batch = store.encode([{ kind: EVENT_TYPES_COUNTER.Incremented, by: 2 }]);
-await store.retry(id, STREAM_TYPES_COUNTER.Counter, batch, { expectedVersion: 1 });
+export const decrement = spacetimedb.reducer(
+  { counterId: t.string(), by: t.u32(), commandId: t.string() },
+  (ctx, command) => {
+    if (command.by === 0) throw new Error('CMD_INVALID_COMMAND: by must be greater than zero');
+    appendCommand(ctx, command, EVENT_TYPES_COUNTER.Decremented, 'dec', command.by);
+  },
+);
+
+export const reset = spacetimedb.reducer(
+  { counterId: t.string(), commandId: t.string() },
+  (ctx, command) => {
+    appendCommand(ctx, command, EVENT_TYPES_COUNTER.Reset, 'rst');
+  },
+);
 ```
+
+These are the only public write callables. The browser sends `counterId`, an optional `by`, and
+`commandId`; the module derives the stream id, event id, event type, payload, and expected version. The
+first caller owns a counter, and a different `ctx.sender` is rejected before any append. Reducers
+return nothing; clients observe the new state through their subscription or a view.
+
+### 2. Client: generated commands and idempotency keys
+
+```ts
+import { createCommandClient, type CommandCalls } from 'stdb-es/client';
+// Command payload types are mirrored from the module by `spacetime generate`;
+// web code does not redeclare them.
+import type {
+  DecrementParams,
+  IncrementParams,
+  ResetParams,
+} from './generated/types/reducers.js';
+
+type CounterCommands = {
+  increment: Omit<IncrementParams, 'commandId'>;
+  decrement: Omit<DecrementParams, 'commandId'>;
+  reset: Omit<ResetParams, 'commandId'>;
+};
+
+const calls: CommandCalls<CounterCommands> = {
+  increment: (command) => connection.reducers.increment(command),
+  decrement: (command) => connection.reducers.decrement(command),
+  reset: (command) => connection.reducers.reset(command),
+};
+
+const commands = createCommandClient(calls);
+
+// The browser sends intent only: no stream id, event, or expected version.
+const sent = await commands.sendNew('increment', { counterId: '1', by: 5 });
+
+// Persist the envelope before dispatch when a timeout is possible. Replaying it
+// with the same `commandId` is deduplicated by the module.
+await commands.send('increment', sent);
+```
+
+In React, the bindings in `calls` are the hooks returned by `useSpacetimeReducer`; wrap them with
+`createCommandClient` once and call `sendNew` from event handlers. The registry described below is the
+**read** codec for stored rows, not a write path.
 
 ### 3. Read model: a view the app owns
 
@@ -371,9 +442,10 @@ appendToStream(ctx, {
 - `position` is gapless and commit-ordered, sourced from the single `es_head` row — not `autoInc()`.
   `version` is per stream and is the concurrency token.
 
-`makeAppendReducer(spacetimedb, config)` builds the app's `append_events` reducer. Config:
-`eventTypes`, `maxBatchSize` (100), `maxPayloadLength` (64 KiB), `onAppended`. `onAppended` runs only
-for new events, never for a replay, and a throw rolls the whole append back.
+`appendToStream(ctx, args, config?)` is the module-only write seam. Pass `eventTypes` to reject unknown
+types and `onAppended` to update caches or inline projections in the same transaction. `onAppended`
+runs only for new events, never for a replay, and a throw rolls the whole append back. Call it from
+app-owned command reducers; do not export a generic append reducer.
 
 ### Reading and time travel
 
@@ -524,21 +596,23 @@ repair is an operator decision.
 ### Client SDK
 
 ```ts
-createEventRegistry({ typeOf, events }); // encode/decode/upgrade per event type
-encodeEvents(registry, events, { newEventId?, metadata? });
+createCommandClient(calls, options?);          // generated command reducers -> typed dispatcher
+newCommandId();  withCommandId(command, opts?); // idempotency-key helpers
+createEventRegistry({ typeOf, events });       // decode/upgrade per event type
 decodeEvent(registry, row);
-createEventStoreClient({ append, registry, newEventId? });
 sliceRows(decodedRows, { streamId?, fromVersion?, atVersion?, atTimestampMicros?, limit? });
 viewQuery(name, args);  tableQuery(name);  sqlLiteral(value);
 subscribeEventRows({ connection, query, readRows, onRows, onError?, streamId? });
 createStreamSubscription({ connection, query(streamId), readRows, onRows });
 ```
 
-The append client owns no state. Event ids default to `crypto.randomUUID()`; the server deduplicates
-by id, so retries are safe. `upgrade` in an event definition is the escape hatch for schema evolution:
-old payloads are migrated to the current shape before `decode` runs. The separate subscription bridge
-binds queries to row handlers; it registers callbacks once and lets SDK reconnect replay refresh
-rows.
+`createCommandClient` adds a `commandId` (default `crypto.randomUUID()`) and dispatches intent through
+the generated command reducers. It owns no event log: `prepare` returns a retryable envelope, `send`
+dispatches it verbatim, and `sendNew` does both. The module deduplicates by the derived event id, so a
+repeated command is a replay. `upgrade` in an event definition is the escape hatch for schema
+evolution: old payloads are migrated to the current shape before `decode` runs. The subscription
+bridge binds queries to row handlers; it registers callbacks once and lets SDK reconnect replay
+refresh rows.
 
 ### Testing
 
@@ -549,8 +623,11 @@ disposable publish/call/SQL/subscribe/dispose lifecycle; see the
 module through SpacetimeDB's module test harness:
 
 ```ts
+import { expect } from 'vitest';
 import { streamId } from 'stdb-es';
+import { appendToStream, streamVersion } from 'stdb-es/server';
 import { runEventStoreContractTests, wireEvents } from 'stdb-es/testing';
+import { increment } from './index.js';
 import {
   EVENT_TYPES_COUNTER,
   STREAM_PREFIXES_COUNTER,
@@ -558,11 +635,15 @@ import {
   VIEWS_COUNTER,
 } from './domains/counter/constants.js';
 
+const counterId = '1';
+const counterStreamId = streamId(STREAM_PREFIXES_COUNTER.counter, counterId);
+
 runEventStoreContractTests({
   spacetimedb,
-  moduleExports: { appendEvents },
-  append: (ctx, args) => appendEvents(ctx, args),
-  streamId: () => streamId(STREAM_PREFIXES_COUNTER.counter, '1'),
+  moduleExports: { increment },
+  // Server-only seam for seeding store invariants. The browser never sees it.
+  append: (ctx, args) => appendToStream(ctx, args),
+  streamId: () => counterStreamId,
   streams: [
     {
       streamType: STREAM_TYPES_COUNTER.Counter,
@@ -583,13 +664,20 @@ runEventStoreContractTests({
       },
     },
   ],
+  // Exercises the browser-facing boundary through the real command reducer.
+  commands: {
+    name: 'increment',
+    command: (_stream, commandId) => ({ counterId, by: 1, commandId }),
+    authorize: (ctx, id) => ctx.db.counterOwner.insert({ streamId: id, owner: ctx.sender }),
+    version: (ctx, id) => streamVersion(ctx, id),
+  },
   projections: { projections, snapshot: (ctx) => [...ctx.db.counterTotals.iter()] },
   views: [
     {
       name: VIEWS_COUNTER.stream,
       view: counterStream,
-      params: (streamId) => ({ streamId }),
-      seed: (ctx, streamId) => ctx.db.counterOwner.insert({ streamId, owner: ctx.sender }),
+      params: (id) => ({ streamId: id }),
+      seed: (ctx, id) => ctx.db.counterOwner.insert({ streamId: id, owner: ctx.sender }),
       check: (rows) => expect(rows).toHaveLength(2),
     },
   ],
