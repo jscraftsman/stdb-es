@@ -1,103 +1,73 @@
 import { describe, expect, it } from 'vitest';
-import { ES_ERROR, NO_STREAM, buildEsErrorMessage } from 'stdb-es';
-import { createFakeAppend, expectAppendError, ids } from 'stdb-es/testing';
-import { makeCounterStore } from './api.js';
-import { EVENT_TYPES_COUNTER, STREAM_TYPES_COUNTER } from './constants.js';
-import { COUNTER_STREAM_ID } from './ids.js';
+import { createFakeCommand } from 'stdb-es/testing';
+import { makeCounterCommands, type CounterCommands } from './api.js';
+import { COUNTER_ID } from './ids.js';
 
-/** Adapts a generated-binding fake to the app's `Promise<void>` reducer call. */
-function callAppendFrom(fake: ReturnType<typeof createFakeAppend>) {
-  return (args: Parameters<Parameters<typeof makeCounterStore>[0]>[0]) =>
-    fake({
-      ...args,
-      metadata: args.metadata ?? null,
-    }).then(() => undefined);
+function fakes() {
+  return {
+    increment: createFakeCommand<CounterCommands['increment']>(),
+    decrement: createFakeCommand<CounterCommands['decrement']>(),
+    reset: createFakeCommand<CounterCommands['reset']>(),
+  };
 }
 
 describe('counter client (offline)', () => {
-  it('encodes events and forwards the expected version', async () => {
-    const append = createFakeAppend();
-    const store = makeCounterStore(callAppendFrom(append));
-    const eventIds = ids('client', 2);
-    let nextId = 0;
+  it('sends intent only with a generated command id', async () => {
+    const calls = fakes();
+    const commands = makeCounterCommands(calls, { newCommandId: () => 'client-1' });
 
-    await store.append(
-      COUNTER_STREAM_ID,
-      STREAM_TYPES_COUNTER.Counter,
-      [
-        { kind: EVENT_TYPES_COUNTER.Incremented, by: 5 },
-        { kind: EVENT_TYPES_COUNTER.Decremented, by: 2 },
-      ],
-      {
-        expectedVersion: NO_STREAM,
-        newEventId: () => eventIds[nextId++]!,
-      },
-    );
+    await commands.sendNew('increment', { counterId: COUNTER_ID, by: 5 });
+    await commands.sendNew('decrement', { counterId: COUNTER_ID, by: 2 });
+    await commands.sendNew('reset', { counterId: COUNTER_ID }, { commandId: 'client-reset' });
 
-    expect(append.calls).toHaveLength(1);
-    expect(append.lastCall).toMatchObject({
-      streamId: COUNTER_STREAM_ID,
-      streamType: STREAM_TYPES_COUNTER.Counter,
-      expectedVersion: NO_STREAM,
-      metadata: null,
+    expect(calls.increment.lastCall).toEqual({
+      counterId: COUNTER_ID,
+      by: 5,
+      commandId: 'client-1',
     });
-    expect(append.lastCall?.events.map((event) => event.eventId)).toEqual([
-      'client-1',
-      'client-2',
-    ]);
-    expect(
-      append.lastCall?.events.map((event) => [event.eventType, JSON.parse(event.data)]),
-    ).toEqual([
-      [EVENT_TYPES_COUNTER.Incremented, { kind: EVENT_TYPES_COUNTER.Incremented, by: 5 }],
-      [EVENT_TYPES_COUNTER.Decremented, { kind: EVENT_TYPES_COUNTER.Decremented, by: 2 }],
-    ]);
+    expect(calls.decrement.lastCall).toEqual({
+      counterId: COUNTER_ID,
+      by: 2,
+      commandId: 'client-1',
+    });
+    expect(calls.reset.lastCall).toEqual({ counterId: COUNTER_ID, commandId: 'client-reset' });
+    for (const fake of Object.values(calls)) {
+      expect(JSON.stringify(fake.lastCall)).not.toContain('streamId');
+      expect(JSON.stringify(fake.lastCall)).not.toContain('event');
+      expect(JSON.stringify(fake.lastCall)).not.toContain('expectedVersion');
+    }
   });
 
-  it('retries the exact encoded batch after a timeout', async () => {
-    const append = createFakeAppend();
-    const store = makeCounterStore(callAppendFrom(append));
-    const encoded = store.encode(
-      [{ kind: EVENT_TYPES_COUNTER.Incremented, by: 1 }],
-      { newEventId: () => ids('retry', 1)[0]! },
-    );
+  it('retries the exact command envelope after a timeout', async () => {
+    const calls = fakes();
+    const commands = makeCounterCommands(calls, { newCommandId: () => 'retry-1' });
 
-    append.nextError(new Error('timeout')).nextResult(undefined);
+    calls.increment.nextError(new Error('timeout')).nextResult(undefined);
 
-    await expect(
-      store.retry(COUNTER_STREAM_ID, STREAM_TYPES_COUNTER.Counter, encoded, {
-        expectedVersion: NO_STREAM,
-      }),
-    ).rejects.toThrow('timeout');
-    await expect(
-      store.retry(COUNTER_STREAM_ID, STREAM_TYPES_COUNTER.Counter, encoded, {
-        expectedVersion: NO_STREAM,
-      }),
-    ).resolves.toBeUndefined();
+    const envelope = await commands.sendNew('increment', {
+      counterId: COUNTER_ID,
+      by: 3,
+    }).catch((cause) => {
+      expect(cause).toBeInstanceOf(Error);
+      // `sendNew` throws before returning, so recover the prepared envelope
+      // from the recorded call for a verbatim retry.
+      return calls.increment.lastCall!;
+    });
 
-    expect(append.calls).toHaveLength(2);
-    expect(append.calls[0]?.events).toEqual(append.calls[1]?.events);
-    expect(append.calls[0]?.events[0]?.eventId).toBe('retry-1');
+    await commands.send('increment', envelope);
+
+    expect(calls.increment.calls).toHaveLength(2);
+    expect(calls.increment.calls[0]).toEqual(calls.increment.calls[1]);
+    expect(calls.increment.lastCall?.commandId).toBe('retry-1');
   });
 
-  it('matches a stable append error from the generated binding', async () => {
-    const append = createFakeAppend({
-      error: new Error(
-        buildEsErrorMessage(ES_ERROR.EXPECTED_VERSION_MISMATCH, 'someone updated first'),
-      ),
-    });
-    const store = makeCounterStore(callAppendFrom(append));
+  it('propagates a rejected command from the generated binding', async () => {
+    const calls = fakes();
+    calls.reset.nextError(new Error('CMD_UNAUTHORIZED: sender does not own this counter'));
+    const commands = makeCounterCommands(calls);
 
-    await expectAppendError(
-      () =>
-        store.append(
-          COUNTER_STREAM_ID,
-          STREAM_TYPES_COUNTER.Counter,
-          [{ kind: EVENT_TYPES_COUNTER.Incremented, by: 1 }],
-          { expectedVersion: 4 },
-        ),
-      ES_ERROR.EXPECTED_VERSION_MISMATCH,
-    );
-
-    expect(append.lastCall?.expectedVersion).toBe(4);
+    await expect(
+      commands.sendNew('reset', { counterId: COUNTER_ID }, { commandId: 'rejected' }),
+    ).rejects.toThrow(/CMD_UNAUTHORIZED/);
   });
 });

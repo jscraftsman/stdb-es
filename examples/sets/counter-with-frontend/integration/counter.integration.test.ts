@@ -12,7 +12,6 @@ import {
 import {
   EVENT_TYPES_COUNTER,
   STREAM_PREFIXES_COUNTER,
-  STREAM_TYPES_COUNTER,
   TABLES_COUNTER,
 } from '../spacetimedb/src/domains/counter/constants.js';
 
@@ -35,26 +34,21 @@ function stream(name: string): string {
   return streamId(STREAM_PREFIXES_COUNTER.counter, name);
 }
 
-function increment(eventId: string, by: number) {
-  return {
-    event_id: eventId,
-    event_type: EVENT_TYPES_COUNTER.Incremented,
-    data: JSON.stringify({ kind: EVENT_TYPES_COUNTER.Incremented, by }),
-    metadata: null,
-  };
-}
-
-function append(
-  id: string,
-  expectedVersion: number,
-  events: readonly ReturnType<typeof increment>[],
+function increment(
+  counterId: string,
+  commandId: string,
+  by: number,
   options?: IntegrationCallOptions,
 ): Promise<void> {
-  return env.call(
-    'append_events',
-    [id, STREAM_TYPES_COUNTER.Counter, expectedVersion, events, null],
-    options,
-  );
+  return env.call('increment', [counterId, by, commandId], options);
+}
+
+function decrement(
+  counterId: string,
+  commandId: string,
+  by: number,
+): Promise<void> {
+  return env.call('decrement', [counterId, by, commandId]);
 }
 
 async function eventRows(id: string): Promise<readonly IntegrationRow[]> {
@@ -73,15 +67,15 @@ async function summaryRow(id: string): Promise<IntegrationRow | undefined> {
 }
 
 describe('counter example set against a real server', () => {
-  it('appends through the reducer and reads owner and anonymous views', async () => {
+  it('calls a command reducer and reads owner and anonymous views', async () => {
     const id = stream('publish');
 
-    await append(id, 0, [increment('integration-publish-1', 5)], { anonymous: true });
+    await increment('publish', 'integration-publish-1', 5, { anonymous: true });
 
     const events = await eventRows(id);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
-      event_id: 'integration-publish-1',
+      event_id: 'inc-integration-publish-1',
       event_type: EVENT_TYPES_COUNTER.Incremented,
       version: 1,
     });
@@ -94,17 +88,28 @@ describe('counter example set against a real server', () => {
     });
   });
 
-  it('rejects a stale expected version with a fresh event id', async () => {
-    const id = stream('stale');
-    await append(id, 0, [increment('integration-stale-1', 2)]);
+  it('replays a repeated command id without appending twice', async () => {
+    const id = stream('retry');
 
-    await expect(append(id, 0, [increment('integration-stale-2', 99)])).rejects.toThrow(
-      /EXPECTED_VERSION_MISMATCH/,
-    );
+    await increment('retry', 'integration-retry-1', 2);
+    await increment('retry', 'integration-retry-1', 2);
 
     const events = await eventRows(id);
     expect(events).toHaveLength(1);
-    expect(events[0]?.event_id).toBe('integration-stale-1');
+    expect(events[0]?.event_id).toBe('inc-integration-retry-1');
+    expect(await summaryRow(id)).toMatchObject({ version: 1, value: 2 });
+  });
+
+  it('rejects a non-owner targeting another caller’s counter', async () => {
+    const id = stream('ownership');
+    await increment('ownership', 'integration-owner-1', 3);
+
+    await expect(
+      increment('ownership', 'integration-intruder-1', 99, { anonymous: true }),
+    ).rejects.toThrow();
+
+    expect(await eventRows(id)).toHaveLength(1);
+    expect(await summaryRow(id)).toMatchObject({ value: 3 });
   });
 
   it('waits for the anonymous view and parameterized event view to converge', async () => {
@@ -118,7 +123,7 @@ describe('counter example set against a real server', () => {
     });
 
     try {
-      await append(id, 0, [increment('integration-live-1', 2)]);
+      await increment('live', 'integration-live-1', 2);
       await client.waitFor(
         (c) =>
           c.rows(TABLES_COUNTER.summary).some(
@@ -130,11 +135,11 @@ describe('counter example set against a real server', () => {
         description: 'first parameterized view row',
       });
 
-      await append(id, 1, [increment('integration-live-2', 3)]);
+      await decrement('live', 'integration-live-2', 3);
       await client.waitFor(
         (c) =>
           c.rows(TABLES_COUNTER.summary).some(
-            (row) => row.stream_id === id && row.value === 5,
+            (row) => row.stream_id === id && row.value === -1,
           ),
         { description: 'updated anonymous summary row' },
       );
@@ -154,15 +159,8 @@ describe('counter example set against a real server', () => {
     });
 
     try {
+      await external.call('increment', ['external', 9, 'integration-external-1']);
       const id = stream('external');
-      await external.call('append_events', [
-        id,
-        STREAM_TYPES_COUNTER.Counter,
-        0,
-        [increment('integration-external-1', 9)],
-        null,
-      ]);
-
       const result = await external.sql(
         `${tableQuery(TABLES_COUNTER.summary)} WHERE stream_id = ${sqlLiteral(id)}`,
         { anonymous: true },

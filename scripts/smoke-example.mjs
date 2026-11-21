@@ -3,10 +3,10 @@
  * Publish smoke test.
  *
  * Runs after `example:publish:fresh`, against the live local server. It proves
- * the things the unit tests cannot: the module publishes, the generated
- * `append_events` reducer has the expected wire signature, private tables are
- * readable by the database owner, and the app's anonymous view reflects the
- * state cache for an unauthenticated caller.
+ * the things the unit tests cannot: the module publishes with command reducers,
+ * private tables are readable by the database owner, ownership and idempotency
+ * hold on the real server, and the anonymous view reflects the state cache for
+ * an unauthenticated caller.
  *
  *   npm run smoke
  *
@@ -17,7 +17,8 @@ import { execFileSync } from 'node:child_process';
 
 const SERVER = process.env.STDB_SERVER ?? 'local';
 const DATABASE = process.env.STDB_DATABASE ?? 'stdb-es-counter';
-const STREAM_ID = 'smoke-counter';
+const COUNTER_ID = 'smoke-counter';
+const STREAM_ID = `counter-${COUNTER_ID}`;
 
 let checks = 0;
 const failures = [];
@@ -53,15 +54,17 @@ function sql(query, { anonymous = false } = {}) {
   return rows.map((row) => Object.fromEntries(row.map((value, index) => [names[index], value])));
 }
 
-/** Invokes a reducer; throws on rejection, carrying the server message. */
-function call(reducer, args) {
-  return run(['call', DATABASE, reducer, '--', ...args.map((arg) => JSON.stringify(arg))]);
+/** Invokes a command reducer; throws on rejection, carrying the server message. */
+function call(reducer, args, { anonymous = false } = {}) {
+  const callArgs = ['call', DATABASE, reducer];
+  if (anonymous) callArgs.push('--anonymous');
+  return run([...callArgs, '--', ...args.map((arg) => JSON.stringify(arg))]);
 }
 
-function expectRejection(label, reducer, args, needle) {
+function expectRejection(label, callback, needle = '') {
   checks += 1;
   try {
-    call(reducer, args);
+    callback();
     failures.push(`${label} — reducer unexpectedly succeeded`);
     console.log(`  FAIL ${label} — reducer unexpectedly succeeded`);
   } catch (error) {
@@ -75,15 +78,10 @@ function expectRejection(label, reducer, args, needle) {
   }
 }
 
-const event = (eventId, kind, by) => ({
-  event_id: eventId,
-  event_type: kind,
-  data: JSON.stringify(by === undefined ? { kind } : { kind, by }),
-  metadata: null,
-});
-
-const append = (expectedVersion, events) =>
-  call('append_events', [STREAM_ID, 'Counter', expectedVersion, events, null]);
+const increment = (commandId, by, options) =>
+  call('increment', [COUNTER_ID, by, commandId], options);
+const decrement = (commandId, by) => call('decrement', [COUNTER_ID, by, commandId]);
+const reset = (commandId) => call('reset', [COUNTER_ID, commandId]);
 
 const streamVersion = () =>
   sql(`SELECT version FROM es_stream WHERE stream_id = '${STREAM_ID}'`)[0]?.version;
@@ -93,60 +91,60 @@ const summary = () =>
     anonymous: true,
   })[0];
 const events = () =>
-  sql(`SELECT event_id, version FROM es_event WHERE stream_id = '${STREAM_ID}'`).sort(
+  sql(`SELECT event_id, version, event_type FROM es_event WHERE stream_id = '${STREAM_ID}'`).sort(
     (a, b) => a.version - b.version,
   );
 
 console.log(`Publish smoke test (${SERVER}/${DATABASE})`);
 
 // Empty database: the module published and the private tables exist.
-check('no stream before the first append', streamVersion() === undefined);
+check('no stream before the first command', streamVersion() === undefined);
 
-append(-1, [event('smoke-1', 'Incremented', 5)]);
-check('first append commits version 1', streamVersion() === 1);
+increment('smoke-1', 5);
+check('first command commits version 1', streamVersion() === 1);
 check('state cache matches the log', state()?.value === 5, JSON.stringify(state()));
 check('anonymous view exposes the same state', summary()?.value === 5, JSON.stringify(summary()));
+check(
+  'event id is derived from the command id',
+  events()[0]?.event_id === 'inc-smoke-1',
+  JSON.stringify(events()),
+);
 
-// Optimistic concurrency: a new event at a stale version must be rejected.
-expectRejection('stale expected version is rejected', 'append_events', [
-  STREAM_ID,
-  'Counter',
-  0,
-  [event('smoke-2', 'Incremented', 100)],
-  null,
-], 'EXPECTED_VERSION_MISMATCH');
-check('rejected append wrote nothing', streamVersion() === 1);
+// Idempotent retry: the same command id is a replay, not a duplicate.
+increment('smoke-1', 5);
+check('replayed command does not change the version', streamVersion() === 1);
+check('replayed command does not duplicate events', events().length === 1, `${events().length} events`);
 
-append(1, [event('smoke-2', 'Decremented', 2)]);
-check('second append commits version 2', streamVersion() === 2);
+// A different sender cannot change a counter owned by the first caller.
+expectRejection('non-owner command is rejected', () =>
+  increment('smoke-intruder', 100, { anonymous: true }),
+);
+check('rejected command wrote nothing', streamVersion() === 1);
+
+decrement('smoke-2', 2);
+check('decrement commits version 2', streamVersion() === 2);
 check('state cache follows the log', state()?.value === 3, JSON.stringify(state()));
 check('anonymous view follows the cache', summary()?.value === 3, JSON.stringify(summary()));
 
-// Idempotent retry: the same event ids are a replay, not a duplicate.
-append(-1, [event('smoke-1', 'Incremented', 5)]);
-check('replayed batch does not change the version', streamVersion() === 2);
-check('replayed batch does not duplicate events', events().length === 2, `${events().length} events`);
-check(
-  'event versions are contiguous',
-  JSON.stringify(events().map((row) => row.version)) === '[1,2]',
-  JSON.stringify(events().map((row) => row.version)),
-);
+reset('smoke-reset');
+check('reset commits version 3', streamVersion() === 3);
+check('reset clears the cached value', state()?.value === 0, JSON.stringify(state()));
 
 // A deleted cache row must be rebuilt by replay, not treated as "state 0".
 sql(`DELETE FROM counter_state WHERE stream_id = '${STREAM_ID}'`);
 check('cache row can be deleted', state() === undefined);
 
-append(2, [event('smoke-3', 'Incremented', 1)]);
-check('append after a lost cache commits version 3', streamVersion() === 3);
+increment('smoke-3', 1);
+check('command after a lost cache commits version 4', streamVersion() === 4);
 check(
   'lost cache is rebuilt from the full stream',
-  state()?.value === 4,
+  state()?.value === 1,
   JSON.stringify(state()),
 );
-check('anonymous view follows the rebuilt cache', summary()?.value === 4, JSON.stringify(summary()));
+check('anonymous view follows the rebuilt cache', summary()?.value === 1, JSON.stringify(summary()));
 check(
   'event versions stay contiguous',
-  JSON.stringify(events().map((row) => row.version)) === '[1,2,3]',
+  JSON.stringify(events().map((row) => row.version)) === '[1,2,3,4]',
   JSON.stringify(events().map((row) => row.version)),
 );
 

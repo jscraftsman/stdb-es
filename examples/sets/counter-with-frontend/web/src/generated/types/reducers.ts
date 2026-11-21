@@ -6,7 +6,11 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
-import AppendEventsReducer from "../append_events_reducer";
+import DecrementReducer from "../decrement_reducer";
+import IncrementReducer from "../increment_reducer";
+import ResetReducer from "../reset_reducer";
 
-export type AppendEventsParams = __Infer<typeof AppendEventsReducer>;
+export type DecrementParams = __Infer<typeof DecrementReducer>;
+export type IncrementParams = __Infer<typeof IncrementReducer>;
+export type ResetParams = __Infer<typeof ResetReducer>;
 

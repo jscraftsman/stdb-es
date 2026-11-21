@@ -34,7 +34,9 @@ import {
 } from "spacetimedb";
 
 // Import all reducer arg schemas
-import AppendEventsReducer from "./append_events_reducer";
+import DecrementReducer from "./decrement_reducer";
+import IncrementReducer from "./increment_reducer";
+import ResetReducer from "./reset_reducer";
 
 // Import all procedure arg schemas
 
@@ -64,7 +66,9 @@ const tablesSchema = __schema({
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
-  __reducerSchema("append_events", AppendEventsReducer),
+  __reducerSchema("decrement", DecrementReducer),
+  __reducerSchema("increment", IncrementReducer),
+  __reducerSchema("reset", ResetReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */

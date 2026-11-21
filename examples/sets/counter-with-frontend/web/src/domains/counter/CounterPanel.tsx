@@ -1,11 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useReducer as useSpacetimeReducer } from 'spacetimedb/react';
-import { ES_ERROR, NO_STREAM, esErrorCode } from 'stdb-es';
 import { reducers } from '../../generated/index.js';
-import { makeCounterStore } from './api.js';
-import { EVENT_TYPES_COUNTER, STREAM_TYPES_COUNTER } from './constants.js';
-import { COUNTER_STREAM_ID } from './ids.js';
-import type { CounterEvent } from './registry.js';
+import { makeCounterCommands, type CounterCommands } from './api.js';
+import { COUNTER_ID, COUNTER_STREAM_ID } from './ids.js';
 
 type CounterRow = { streamId: string; version: number; value: bigint };
 
@@ -15,29 +12,38 @@ type Props = {
 };
 
 export function CounterPanel({ rows, ready }: Props) {
-  const callAppend = useSpacetimeReducer(reducers.appendEvents);
-  const store = useMemo(() => makeCounterStore(callAppend), [callAppend]);
+  const callIncrement = useSpacetimeReducer(reducers.increment);
+  const callDecrement = useSpacetimeReducer(reducers.decrement);
+  const callReset = useSpacetimeReducer(reducers.reset);
+  const commands = useMemo(
+    () =>
+      makeCounterCommands({
+        increment: callIncrement,
+        decrement: callDecrement,
+        reset: callReset,
+      }),
+    [callIncrement, callDecrement, callReset],
+  );
 
   const [by, setBy] = useState(1);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const row = rows.find((candidate) => candidate.streamId === COUNTER_STREAM_ID);
-  const version = row?.version ?? NO_STREAM;
 
-  async function append(events: CounterEvent[]) {
+  async function send<K extends keyof CounterCommands>(name: K, command: CounterCommands[K]) {
     setBusy(true);
     setMessage(null);
     try {
-      await store.append(COUNTER_STREAM_ID, STREAM_TYPES_COUNTER.Counter, events, {
-        expectedVersion: version,
-      });
-      setMessage('Committed. The view will refresh when the subscription applies.');
+      // The returned envelope can be retried verbatim after a timeout.
+      await commands.sendNew(name, command);
+      setMessage('Command accepted. The view will refresh when the subscription applies.');
     } catch (cause) {
+      const detail = `${(cause as { message?: string })?.message ?? cause}`;
       setMessage(
-        esErrorCode(cause) === ES_ERROR.EXPECTED_VERSION_MISMATCH
-          ? 'Someone updated the counter first. The view will refresh.'
-          : 'Could not append the event.',
+        detail.includes('CMD_UNAUTHORIZED')
+          ? 'Only this counter’s owner can change it.'
+          : 'Command rejected.',
       );
     } finally {
       setBusy(false);
@@ -64,17 +70,20 @@ export function CounterPanel({ rows, ready }: Props) {
       <div className="actions">
         <button
           disabled={busy}
-          onClick={() => append([{ kind: EVENT_TYPES_COUNTER.Incremented, by }])}
+          onClick={() => send('increment', { counterId: COUNTER_ID, by })}
         >
           Increment
         </button>
         <button
           disabled={busy}
-          onClick={() => append([{ kind: EVENT_TYPES_COUNTER.Decremented, by }])}
+          onClick={() => send('decrement', { counterId: COUNTER_ID, by })}
         >
           Decrement
         </button>
-        <button disabled={busy} onClick={() => append([{ kind: EVENT_TYPES_COUNTER.Reset }])}>
+        <button
+          disabled={busy}
+          onClick={() => send('reset', { counterId: COUNTER_ID })}
+        >
           Reset
         </button>
       </div>

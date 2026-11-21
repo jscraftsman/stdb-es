@@ -10,6 +10,12 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
+export const CounterOwner = __t.object("CounterOwner", {
+  streamId: __t.string(),
+  owner: __t.identity(),
+});
+export type CounterOwner = __Infer<typeof CounterOwner>;
+
 export const CounterState = __t.object("CounterState", {
   streamId: __t.string(),
   version: __t.u32(),
@@ -19,14 +25,6 @@ export type CounterState = __Infer<typeof CounterState>;
 
 export const CounterSummary = __t.object("CounterSummary", {});
 export type CounterSummary = __Infer<typeof CounterSummary>;
-
-export const EsEncodedEvent = __t.object("EsEncodedEvent", {
-  eventId: __t.string(),
-  eventType: __t.string(),
-  data: __t.string(),
-  metadata: __t.option(__t.string()),
-});
-export type EsEncodedEvent = __Infer<typeof EsEncodedEvent>;
 
 export const EsEvent = __t.object("EsEvent", {
   eventId: __t.string(),

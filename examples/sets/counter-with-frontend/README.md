@@ -1,10 +1,10 @@
 # Counter with frontend
 
 A small full-stack example set: one SpacetimeDB module plus one React client using `stdb-es` for the
-event log, optimistic concurrency, a state cache, and a live anonymous read model.
+event log, a state cache, a live anonymous read model, and backend-owned command writes.
 
 This is the baseline for the planned example sets. It deliberately stays small: one stream, three
-event types, one state table, two views, and one screen.
+event types, one state table, an ownership table, two views, and one screen.
 
 ## Prerequisites
 
@@ -58,11 +58,12 @@ npm run example:set:counter:test
 
 The root script builds `stdb-es`, then runs two Vitest projects:
 
-- `spacetimedb/` uses `createModuleTest` to call `append_events`, read the log with `readStream`,
-  inspect the anonymous summary view, build retry-safe fixtures with `ids`, and assert the stable
-  `ES_EXPECTED_VERSION_MISMATCH` code with `expectAppendError`.
-- `web/` uses `createFakeAppend` behind `makeCounterStore` to check event encoding,
-  `expectedVersion`, retry id reuse, and client-side `ES_*` error handling.
+- `spacetimedb/` uses `createModuleTest` to call the `increment`, `decrement`, and `reset` command
+  reducers, read the log with `readStream`, inspect the anonymous summary view, and assert that a
+  repeated `commandId` is an idempotent replay and a different sender is rejected.
+- `web/` uses `createFakeCommand` behind `makeCounterCommands` to check that the browser sends only
+  intent (`counterId`, optional `by`, and `commandId`), that retries reuse the same envelope, and
+  that rejected commands surface an error.
 
 Both projects load `spacetimedbModuleTestPlugin()` in their `vitest.config.ts`: the module needs it
 for the in-memory datastore, and the client keeps it so importing the `stdb-es/testing` barrel stays
@@ -73,7 +74,7 @@ resolvable in Node. No running server is involved. See the
 
 The example also ships a Node-only integration suite at `integration/`. It uses
 `stdb-es/testing/integration` to publish this module to a disposable in-memory database, then exercises
-the real write and read paths:
+the real command and read paths:
 
 ```bash
 npm run example:set:counter:test:integration
@@ -82,9 +83,9 @@ npm run example:set:counter:test:integration
 The suite covers:
 
 - `createIntegrationEnv` creating and tearing down a disposable database in one lifecycle;
-- app-owned `streamId` and constants driving a real `append_events` call;
+- generated command reducers driving real writes with app-owned stream ids chosen by the module;
 - owner SQL over the private `es_event` table and anonymous SQL over `counter_summary`;
-- stale-version rejection with a fresh event id;
+- `commandId` replay and non-owner rejection on a real server;
 - live subscription convergence for both the anonymous view and the parameterized `stream_events`
   view built with `viewQuery`;
 - a second environment connecting through an explicit server URL without stopping the shared server.
@@ -97,9 +98,14 @@ root also runs `npm run smoke:integration`, a broader dogfood of the same kit.
 
 ## What it demonstrates
 
-- `streamId(STREAM_PREFIXES_COUNTER.counter, '1')` for a stable stream id on both sides.
-- A client event registry with identity `encode` codecs for plain JSON payloads.
-- `expectedVersion` from the subscribed view version, with `NO_STREAM` for the first append.
+- Backend-owned writes: the browser calls generated `increment`, `decrement`, and `reset` reducers
+  with intent only; the module derives `streamId`, event id, event type, payload, and expected version.
+- Ownership: the first caller to use a counter owns it; later commands from another `ctx.sender` fail
+  before any append.
+- Idempotency: `commandId` produces a deterministic event id, so a retry is a replay rather than a
+  duplicate increment.
+- Command payload types imported from `web/src/generated/types/reducers.ts`; the web app does not
+  redeclare them.
 - A module-owned state cache that replays the log when its row is missing.
 - An anonymous materialized view consumed with `useTable(tables.counterSummary)`.
 - A public parameterized `stream_events` view built with `makeStreamView` and queried with
@@ -107,9 +113,9 @@ root also runs `npm run smoke:integration`, a broader dogfood of the same kit.
   check ownership in the view's `authorize` callback.
 - App-owned constants in `domains/counter/constants.ts` on both module and web sides. Never import
   those files from `stdb-es` itself.
-- Offline tests that exercise the real reducer and the real client store through
+- Offline tests that exercise the real command reducers and the real client command client through
   `stdb-es/testing`, with no server in the loop.
-- Integration tests that publish this same module and exercise reducers, SQL, and subscriptions
+- Integration tests that publish this same module and exercise commands, SQL, and subscriptions
   through `stdb-es/testing/integration`.
 
 ## Layout
@@ -117,20 +123,20 @@ root also runs `npm run smoke:integration`, a broader dogfood of the same kit.
 ```text
 counter-with-frontend/
   integration/
-    counter.integration.test.ts       # createIntegrationEnv: publish, call, SQL, subscriptions
+    counter.integration.test.ts       # createIntegrationEnv: publish, command, SQL, subscriptions
     vitest.config.ts                  # Node-only integration project
     tsconfig.json
   spacetimedb/
-    vitest.config.ts                 # in-memory module harness plugin
+    vitest.config.ts                  # in-memory module harness plugin
     src/
       index.ts                       # module exports only
-      schema.ts                      # esTables + counter_state
+      schema.ts                      # esTables + counter_state + counter_owner
       domains/counter/
         constants.ts
         events.ts
         aggregate.ts                 # evolve + replay
-        reducers.ts                  # append_events
-        reducers.test.ts             # createModuleTest + ids + expectAppendError
+        reducers.ts                  # increment / decrement / reset commands
+        reducers.test.ts             # createModuleTest + ownership + replay
         views.ts                     # counter_summary + stream_events
   web/
     vitest.config.ts
@@ -140,15 +146,16 @@ counter-with-frontend/
       domains/counter/
         constants.ts                 # mirrors module constants
         ids.ts
-        registry.ts
-        api.ts                       # store client -> generated reducer
-        api.test.ts                  # createFakeAppend + ids
+        registry.ts                  # read-side event decoder
+        api.ts                       # generated commands -> command client
+        api.test.ts                  # createFakeCommand + command ids
         CounterPanel.tsx
       generated/                     # regenerated by the publish script
 ```
 
 ## Out of scope
 
-No authentication, no parameterized views in the UI, no cross-aggregate workflow, no schema
-evolution, and no async projection pump. The parameterized audit view exists for integration tests;
-the UI still shows one shared public counter and is not a multi-user authorization demo.
+No authentication provider, no parameterized views in the UI, no cross-aggregate workflow, no schema
+evolution, and no async projection pump. The counter uses a simple first-writer ownership row;
+production apps should derive ownership from their authenticated identity provider. The parameterized
+audit view exists for integration tests; the UI still shows one shared public counter.

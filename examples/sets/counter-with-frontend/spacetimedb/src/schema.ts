@@ -12,7 +12,19 @@ export const counterState = table(
   },
 );
 
-export const spacetimedb = schema({ ...esTables, counterState });
+/**
+ * Private ownership table. The first caller to use a counter owns it; command
+ * reducers reject later commands from a different `ctx.sender`.
+ */
+export const counterOwner = table(
+  { name: TABLES_COUNTER.owner },
+  {
+    streamId: t.string().primaryKey(),
+    owner: t.identity(),
+  },
+);
+
+export const spacetimedb = schema({ ...esTables, counterState, counterOwner });
 export type Context = CtxOf<typeof spacetimedb>;
 
 export default spacetimedb;

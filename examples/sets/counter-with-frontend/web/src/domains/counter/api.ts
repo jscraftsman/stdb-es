@@ -1,23 +1,31 @@
-import { createEventStoreClient } from 'stdb-es/client';
-import type { AppendEventsParams } from '../../generated/types/reducers.js';
-import { counterRegistry } from './registry.js';
+import {
+  createCommandClient,
+  type CommandCalls,
+  type CommandClient,
+  type CommandIdOptions,
+} from 'stdb-es/client';
+import type {
+  DecrementParams,
+  IncrementParams,
+  ResetParams,
+} from '../../generated/types/reducers.js';
 
-type EncodedEvents = AppendEventsParams['events'];
+/**
+ * Intent-only command shapes. `commandId` is added by `createCommandClient`, so
+ * web code never sends a stream id, event, or expected version.
+ */
+export type CounterCommands = {
+  increment: Omit<IncrementParams, 'commandId'>;
+  decrement: Omit<DecrementParams, 'commandId'>;
+  reset: Omit<ResetParams, 'commandId'>;
+};
 
-/** The typed `useReducer(reducers.appendEvents)` call. */
-export type AppendCall = (params: AppendEventsParams) => Promise<void>;
+export type CounterCommandClient = CommandClient<CounterCommands>;
 
-export function makeCounterStore(callAppend: AppendCall) {
-  return createEventStoreClient({
-    registry: counterRegistry,
-    // The client library produces one args object, which matches generated reducers.
-    append: (args) =>
-      callAppend({
-        streamId: args.streamId,
-        streamType: args.streamType,
-        expectedVersion: args.expectedVersion,
-        events: args.events as EncodedEvents,
-        metadata: args.metadata ?? undefined,
-      }),
-  });
+/** Binds generated reducer hooks into one typed command dispatcher. */
+export function makeCounterCommands(
+  calls: CommandCalls<CounterCommands>,
+  options: CommandIdOptions = {},
+): CounterCommandClient {
+  return createCommandClient(calls, options);
 }

@@ -10,16 +10,7 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-import {
-  EsEncodedEvent,
-} from "./types";
-
 export default {
-  streamId: __t.string(),
-  streamType: __t.string(),
-  expectedVersion: __t.i32(),
-  get events() {
-    return __t.array(EsEncodedEvent);
-  },
-  metadata: __t.option(__t.string()),
+  counterId: __t.string(),
+  commandId: __t.string(),
 };
