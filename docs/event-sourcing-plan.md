@@ -71,6 +71,12 @@ change the design, so they are recorded here rather than quietly edited.
 | **R6** | **API reference** | `docs/API.md` documents every export from `.`, `./server`, `./client`, and `./testing` with its purpose, inputs/payload, and output/guarantees. Planned APIs are listed separately and never presented as shipped. |
 | **R7** | **README glossary** | `README.md` defines the consumer-facing terms used by the API and guides: stream, event envelope, version, expected version, position, state cache, version guard, projection, view, upcast, domain, cross-aggregate, and the other terms used by the consumer API. |
 | **R8** | **Example sets** | Each planned set contains a publishable module plus a simple React client with a basic UI. The sets cover idempotency, eventual consistency, cross-aggregate coordination, multiple domains, and schema evolution with minimal concept overlap. Implementation waits for an explicit go signal. |
+| **R9** | **Backend-owned command writes** (planned breaking change; §18, M15) | Browser code never builds an event envelope (`streamId`, `streamType`, `eventType`, `data`, `expectedVersion`) and never calls a generic append. It calls **app-defined public command reducers** with a typed command payload plus an idempotency key; only those reducers validate authorization and call `appendToStream`. Commands are declared in the module and mirrored to the frontend by `spacetime generate`. The generic `append_events` reducer is not part of the callable app surface. Counter examples expose `increment`, `decrement`, and `reset`. Rollout is phased (§18.6) and starts only on an explicit go signal. |
+
+> **Planned breaking change.** R9 supersedes the client `append`/`retry` surface in §13 and the
+> `makeAppendReducer` factory in §4 once M15 is implemented. It does **not** rewrite shipped M0–M8
+> behavior; those milestones stay as historical record. The full requirement, rationale, and
+> rollout are specified in §18.
 
 ---
 
@@ -819,6 +825,10 @@ createStreamSubscription({ connection, query(streamId), readRows, onRows });
   `onError` or rethrows them. `createStreamSubscription` keeps one per-stream query active and ignores
   stale callbacks after a switch.
 - The client entry is browser-safe; integration-test tooling is a separate Node-only entry (R3).
+- **Planned breaking change (R9 / M15 / §18):** the `append`/`retry` path above and the generic
+  `makeAppendReducer` factory are removed from the browser-facing write path. Frontend code calls
+  generated command reducers with a typed command payload; decoding, upcasting, subscriptions, and
+  `sliceRows` remain unchanged.
 
 ---
 
@@ -940,9 +950,12 @@ Actions run has not yet been observed.
 | M6 | **Consumer unit-test kit** (`stdb-es/testing`) | fake append, id helpers, module-test wrapper, and failure assertions shipped; 10 kit tests pass offline; a one-import, ~10-line consumer test needs no server | done |
 | M7 | **Consumer integration-test kit** (`stdb-es/testing/integration`) | one call creates, publishes, and tears down a disposable database; concurrency, subscription, and anonymous-view cases green locally and remotely | done |
 | M8 | **Developer documentation**: `docs/usage-guide.md`, `docs/API.md`, README glossary | all four guide parts present; every shipped export documented with inputs/outputs; README glossary links to both documents | documentation done |
+| M15 | **Backend-owned command writes** (breaking change; §18) | Phases 1–6 in §18.6 complete: no browser path can call a generic append; commands are declared in the module and mirrored by `spacetime generate`; counter reducers `increment`/`decrement`/`reset` enforce ownership; package, kits, examples, and docs migrated; full suite green | **planned — Phase 1 (requirements) in progress; implementation paused pending go signal** |
 
 M1 is the keystone: if dedupe/version/position ordering is wrong, everything downstream inherits it.
-M6 comes before M7: the fakes define the seams the integration kit exercises.
+M6 comes before M7: the fakes define the seams the integration kit exercises. M15 is separate from
+M9–M13: it changes the write contract for shipped pieces and does not start the paused example-set
+sequence.
 
 ### 15.2 Example sets (one implemented baseline; M9–M13 planned)
 
@@ -1001,6 +1014,7 @@ recorded here; the implemented full-stack baseline does not start that sequence.
 | Reducers return nothing | Client observes the new version via subscription/view. |
 | Subscription args are literals | Helpers validate and escape; use table queries for dynamic filters on materialized models. |
 | Stream id ownership | `streamId(prefix, key)` only formats/validates. Client-generated ids need module validation; module-generated ids require a view for discovery because reducers return void. Hybrid command ids are the recommended default. |
+| **Client-shaped events / cross-stream writes** | **Security flaw in the shipped frontend write path (§18).** Reducers are public callables; a browser calling a generic append can choose `streamId`, `eventType`, and `data`. Fix: remove that surface, send commands to backend-owned reducers, derive stream ids and events server-side, and authorize against `ctx.sender`. Tracked as M15/R9; not yet implemented. |
 | Event table growth | Minimal indexes, tiered storage, never delete history; archival is an app decision. |
 | Determinism | No clock/RNG/network. `ctx.timestamp`, `ctx.sender`, `ctx.random` only. |
 | Library bundle size | Server entry depends only on `spacetimedb/server`; helpers tree-shakeable. |
@@ -1025,3 +1039,153 @@ Resolved in v1:
    `stdb-es/testing` stays runner-agnostic.
 
 Still open: none at this time.
+
+**Planned decision (M15, §18), not yet implemented:** replace the frontend append path with
+backend-owned command reducers. The browser sends an intent payload (command + idempotency key); the
+module decides stream id, event types, event ids, and authorization, then appends. Commands are
+declared in the module and mirrored to the frontend through `spacetime generate`. This is breaking:
+`makeAppendReducer`, `createEventStoreClient`'s `append`/`retry`, and every generic
+`append_events` call site are superseded. Rollout waits for an explicit go signal.
+
+---
+
+## 18. Frontend write boundary: commands instead of append (R9 / M15)
+
+**Status: requirement refined in Phase 1; implementation paused pending an explicit go signal.**
+This section is the authoritative statement of the change. It does not alter the shipped M0–M8
+record in §13–§17; it defines the breaking change that supersedes parts of it when delivered.
+
+### 18.1 The flaw
+
+SpacetimeDB reducers are public callables. The shipped browser write path hands client code the
+whole event envelope: `createEventStoreClient(...).append(streamId, streamType, events, options)`
+encodes events in the browser and passes `AppendCallArgs` to a generated `append_events` reducer
+(§13), which `makeAppendReducer` builds from caller-supplied `streamId`, `streamType`,
+`expectedVersion`, and an array of `{ eventId, eventType, data, metadata }` (§4). Consequences:
+
+1. **Data shaping.** A browser user can send any `eventType` and any `data` string, bypassing the
+   app's event registry and domain validation. The registry is only advisory on this path.
+2. **Cross-stream writes.** `appendToStream` trusts the caller's `streamId`/`streamType`; it has no
+   ownership check. A user can target any stream, including one owned by another user.
+3. **Client-side authorization is not a boundary.** Any check in React event handlers or in a
+   client helper can be skipped by calling the reducer directly from devtools or a script.
+4. **Auditing is not prevention.** `createdBy: ctx.sender` records who wrote a bad row, but does not
+   stop the write.
+
+Therefore a raw append must not be reachable from browser-facing code, and a generic
+`append_events` reducer must not remain exported from an app module — otherwise the flaw survives
+even if the UI stops using the client helper.
+
+### 18.2 Target contract
+
+**The client sends intent (a command); the backend decides facts (events).**
+
+| Concern | Shipped path (before) | Target path (M15) |
+| --- | --- | --- |
+| Frontend write call | `client.append(streamId, streamType, events, ...)` → generated `append_events` | generated `increment` / `decrement` / `reset` reducer with a command payload |
+| Who builds the event envelope | browser (`encodeEvents`) | backend command reducer |
+| Who chooses `streamId` / `streamType` | caller-supplied | derived server-side from validated command fields and an app-owned ownership table |
+| Who chooses `eventType` / `data` | caller-supplied | backend event factory / registry |
+| Who owns idempotency | browser `newEventId()` event ids | caller `commandId`; backend derives deterministic event ids from it |
+| Who validates | browser registry (advisory) | backend command handler (authoritative), using `ctx.sender` |
+| Public reducer surface | generic `append_events` | only app-defined command reducers |
+| Reads | subscription / view / `decode` | unchanged |
+
+The browser never supplies `streamId`, `streamType`, `eventType`, `data`, `eventId`, `position`, or
+`expectedVersion`. Its entire write vocabulary is the set of command reducers the module exports.
+
+### 18.3 Command payload contract
+
+1. **Declared in the backend module.** A command is a plain SpacetimeDB type (for example
+   `t.object('IncrementCounter', { counterId: t.string(), by: t.u32(), commandId: t.string() })`)
+   used as a reducer argument type. Command names and shapes are part of the backend API.
+2. **Mirrored to the frontend by `spacetime generate`.** Web code imports command payload types
+   from its generated bindings (the counter set already generates into `web/src/generated/`); it
+   must not redeclare them. A generated command reducer is the only callable write surface.
+3. **Idempotency key.** Every command carries a caller-generated `commandId` (UUIDv7, same role as
+   today's event id). The backend derives event ids deterministically from the command id, so a
+   retry of the same command deduplicates in `appendToStream` instead of appending twice.
+4. **Server-side derivation.** The reducer resolves `streamId` via app-owned constants
+   (`streamId(STREAM_PREFIXES_COUNTER.counter, command.counterId)`), checks ownership against
+   `ctx.sender`, validates domain rules (for example `by > 0`), builds encoded events, and calls
+   `appendToStream` with a server-chosen `expectedVersion`.
+5. **Failure semantics.** Invalid command, unknown stream, missing ownership, or stale version
+   rejects before any write with a stable error code (app `CMD_*` or existing `ES_*`). Reducers
+   still return `void`; the client observes the new state through its subscription/view (§7).
+6. **No generic fallback.** `makeAppendReducer` and any exported `append_events` reducer are removed
+   from the shipped write path (Phase 2 for the package, Phase 5 for the examples). Keeping one
+   would leave a callable bypass.
+
+### 18.4 Counter example migration
+
+Both `examples/counter` and `examples/sets/counter-with-frontend` migrate in Phase 5. The web app
+stops importing the generic append client and calls generated reducers with intent only:
+
+```ts
+// web: command payload types come from `spacetime generate`
+await conn.reducers.increment({ counterId, by: 1, commandId: newCommandId() });
+await conn.reducers.decrement({ counterId, by: 1, commandId: newCommandId() });
+await conn.reducers.reset({ counterId, commandId: newCommandId() });
+```
+
+```ts
+// module: the only place that appends for this stream type
+export const increment = spacetimedb.reducer(IncrementCounter, (ctx, command) => {
+  const stream = authorizeCounter(ctx, command.counterId); // throws for non-owners
+  appendToStream(ctx, {
+    streamId: stream.streamId,
+    streamType: STREAM_TYPES_COUNTER.Counter,
+    expectedVersion: stream.version,
+    events: [encodeIncrement(command)], // event id derived from commandId
+  });
+  updateCounterStateCache(ctx, stream.streamId); // same inline path as today
+});
+// decrement and reset follow the same shape; no append_events reducer is exported
+```
+
+Acceptance for the example: a browser calling `increment` on another owner's `counterId` fails; a
+retried command with the same `commandId` does not double-increment; the anonymous summary view and
+`stream_events` subscription behave as before.
+
+### 18.5 Compatibility and impact
+
+This is a **breaking change** to the client write API and to module reducer exports. Affected
+surfaces, all owned by phases in §18.6:
+
+- `stdb-es/client`: `AppendCallArgs`, `AppendCall`, `EventStoreClientOptions.append`,
+  `createEventStoreClient(...).append/.retry`, and browser-side `encodeEvents` for writes.
+- `stdb-es/server`: `makeAppendReducer` (no longer a shipped write-path factory).
+- `stdb-es/testing`: `createFakeAppend` and the contract suite's `appendEvents` seam.
+- `stdb-es/testing/integration` and smoke scripts: `env.call('append_events', ...)`.
+- Examples, their README suites, and `docs/API.md` / `docs/usage-guide.md` / integration and unit
+  guides, plus `README.md` scripts.
+
+Read-side helpers (`decode`, upcasters, `sliceRows`, subscriptions, views, `viewQuery`,
+`tableQuery`) are intentionally unaffected.
+
+### 18.6 Phased rollout
+
+Each phase starts only after an explicit go signal and completes its own checks before the next is
+proposed. "If necessary" is decided at the start of that phase, not assumed.
+
+| Phase | Scope | Exit criteria | Status |
+| --- | --- | --- | --- |
+| 1 | Requirements/plan docs — this document | Flaw, target contract, command payload rules, counter mapping, impact, and phases recorded; R9, M15, risk, and decision entries added | **in progress** |
+| 2 | Package source (`src/client`, `src/server`) | Browser-facing append/retry surface removed; `makeAppendReducer` no longer in the shipped write path; optional command-dispatch helper uses generated reducers; read/decode/subscribe helpers unchanged; typecheck, unit suite, build, pack check green | paused |
+| 3 | Unit testing kit (`src/testing`) if necessary | Fake append seam replaced/augmented by a fake command dispatcher; contract suite adapted to command reducers; offline tests green | paused |
+| 4 | Integration testing kit (`src/testing/integration`) if necessary | Generic `append_events` calls in kit docs, tests, and smoke scripts replaced by command reducer calls; local and external URL modes green | paused |
+| 5 | Examples (`examples/counter`, `examples/sets/counter-with-frontend`) | No browser path can call a generic append; `increment`/`decrement`/`reset` module reducers validate ownership; command payload types come from generated bindings; example typechecks, unit tests, and integration tests green | paused |
+| 6 | Remaining docs (`usage-guide.md`, `API.md`, `README.md`, unit/integration guides, plan status) | No frontend-append snippets remain; command contract and new exports documented; phase status updated; markdown links/fences green | paused |
+
+Independent of M15, M9–M13 and M14 stay paused/deferred as recorded in §15.
+
+### 18.7 Definition of done for M15
+
+- No module in the repository exports a generic append reducer reachable from a browser.
+- No browser code constructs `streamId`, `eventType`, `data`, `eventId`, or `expectedVersion` for a
+  write; command payload types are imported from `spacetime generate` output.
+- Authorization is enforced in command reducers against `ctx.sender`, with a negative test for a
+  non-owner targeting another user's stream.
+- Retrying a command with the same `commandId` is an idempotent replay, not a duplicate event.
+- All existing CI layers (build, typechecks, offline tests, pack check, live smoke, integration
+  smoke, example tests) remain green after the migration.
