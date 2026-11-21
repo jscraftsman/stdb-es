@@ -29,6 +29,10 @@ describe('CLI formatting and SQL parsing', () => {
     expect(cliArgs(undefined)).toEqual([]);
   });
 
+  it('serializes command payloads as positional CLI tokens', () => {
+    expect(cliArgs(['counter-1', 'cmd-1', 2])).toEqual(['"counter-1"', '"cmd-1"', '2']);
+  });
+
   it('maps CLI columns and rows into keyed objects', () => {
     const output = JSON.stringify([
       {

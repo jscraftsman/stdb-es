@@ -950,7 +950,7 @@ Actions run has not yet been observed.
 | M6 | **Consumer unit-test kit** (`stdb-es/testing`) | fake append, id helpers, module-test wrapper, and failure assertions shipped; 10 kit tests pass offline; a one-import, ~10-line consumer test needs no server | done |
 | M7 | **Consumer integration-test kit** (`stdb-es/testing/integration`) | one call creates, publishes, and tears down a disposable database; concurrency, subscription, and anonymous-view cases green locally and remotely | done |
 | M8 | **Developer documentation**: `docs/usage-guide.md`, `docs/API.md`, README glossary | all four guide parts present; every shipped export documented with inputs/outputs; README glossary links to both documents | documentation done |
-| M15 | **Backend-owned command writes** (breaking change; §18) | Phases 1–6 in §18.6 complete: no browser path can call a generic append; commands are declared in the module and mirrored by `spacetime generate`; counter reducers `increment`/`decrement`/`reset` enforce ownership; package, kits, examples, and docs migrated; full suite green | **planned — Phases 1–3 complete; awaiting go signal for Phase 4** |
+| M15 | **Backend-owned command writes** (breaking change; §18) | Phases 1–6 in §18.6 complete: no browser path can call a generic append; commands are declared in the module and mirrored by `spacetime generate`; counter reducers `increment`/`decrement`/`reset` enforce ownership; package, kits, examples, and docs migrated; full suite green | **planned — Phases 1–4 complete; awaiting go signal for Phase 5** |
 
 M1 is the keystone: if dedupe/version/position ordering is wrong, everything downstream inherits it.
 M6 comes before M7: the fakes define the seams the integration kit exercises. M15 is separate from
@@ -1157,7 +1157,8 @@ surfaces, all owned by phases in §18.6:
 - `stdb-es/server`: `makeAppendReducer` (no longer a shipped write-path factory).
 - `stdb-es/testing`: `createFakeAppend` (now deprecated in favor of `createFakeCommand`) and the
   contract suite's `appendEvents` seam (now augmented by optional command-boundary checks).
-- `stdb-es/testing/integration` and smoke scripts: `env.call('append_events', ...)`.
+- `stdb-es/testing/integration` and smoke scripts: `env.call('append_events', ...)` — migrated in
+  Phase 4 to command reducer calls against a publishable command fixture.
 - Examples, their README suites, and `docs/API.md` / `docs/usage-guide.md` / integration and unit
   guides, plus `README.md` scripts.
 
@@ -1174,7 +1175,7 @@ proposed. "If necessary" is decided at the start of that phase, not assumed.
 | 1 | Requirements/plan docs — this document | Flaw, target contract, command payload rules, counter mapping, impact, and phases recorded; R9, M15, risk, and decision entries added | done |
 | 2 | Package source (`src/client`, `src/server`) | Browser-facing append/retry surface removed; `makeAppendReducer` no longer in the shipped write path; optional command-dispatch helper uses generated reducers; read/decode/subscribe helpers unchanged; typecheck, unit suite, build, pack check green | done |
 | 3 | Unit testing kit (`src/testing`) if necessary | Fake append seam replaced/augmented by a fake command dispatcher; contract suite adapted to command reducers; offline tests green | done |
-| 4 | Integration testing kit (`src/testing/integration`) if necessary | Generic `append_events` calls in kit docs, tests, and smoke scripts replaced by command reducer calls; local and external URL modes green | paused |
+| 4 | Integration testing kit (`src/testing/integration`) if necessary | Generic `append_events` calls in kit docs, tests, and smoke scripts replaced by command reducer calls; local and external URL modes green | done |
 | 5 | Examples (`examples/counter`, `examples/sets/counter-with-frontend`) | No browser path can call a generic append; `increment`/`decrement`/`reset` module reducers validate ownership; command payload types come from generated bindings; example typechecks, unit tests, and integration tests green | paused |
 | 6 | Remaining docs (`usage-guide.md`, `API.md`, `README.md`, unit/integration guides, plan status) | No frontend-append snippets remain; command contract and new exports documented; phase status updated; markdown links/fences green | paused |
 
@@ -1191,6 +1192,14 @@ optional `commands` block and dogfoods it against the fixture's `increment` redu
 single-append command handling, `commandId` replay, and rejection when the sender has no ownership
 row. Root offline tests are green at 124 tests. The integration toolkit still calls
 `append_events` and migrates in Phase 4.
+
+**Phase 4 intermediate state.** The integration kit remains reducer-agnostic. A publishable command
+fixture at `test/integration-module` provides `claim_counter`, `increment`, `decrement`, and `reset`
+so the live kit smoke can migrate without pulling Phase 5 example work forward. The smoke now checks
+command writes, `commandId` replay, non-owner rejection, subscriptions, cache rebuild, and external
+URL mode; all 16 checks pass. `docs/integration testing.md` and the CLI-formatting test use command
+payloads. Examples and their publish/integration suites still target `append_events` by design until
+Phase 5.
 
 Independent of M15, M9–M13 and M14 stay paused/deferred as recorded in §15.
 

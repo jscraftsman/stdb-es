@@ -45,37 +45,30 @@ afterEach(async () => {
   await env?.dispose();
 });
 
-it('appends an event and exposes it through the public view', async () => {
+it('calls a command reducer and exposes the new state through the public view', async () => {
   env = await createIntegrationEnv({
     modulePath: 'spacetimedb',
   });
 
-  await env.call('append_events', [
-    'counter-1',
-    'Counter',
-    0,
-    [
-      {
-        event_id: 'it-1',
-        event_type: 'Incremented',
-        data: JSON.stringify({ kind: 'Incremented', by: 1 }),
-        metadata: null,
-      },
-    ],
-    null,
-  ]);
+  // App-specific setup: the caller owns this counter.
+  await env.call('claim_counter', ['counter-1', 'claim-1']);
+  // The browser sends intent only; the module derives and appends the event.
+  await env.call('increment', ['counter-1', 'it-1', 1]);
 
   const events = await env.sql('SELECT * FROM es_event');
   expect(events.rows).toHaveLength(1);
 
   const summary = await env.sql('SELECT * FROM counter_summary', { anonymous: true });
-  expect(summary.rows).toEqual([{ stream_id: 'counter-1', version: 1, value: 1 }]);
+  expect(summary.rows).toHaveLength(1);
+  expect(summary.rows[0]).toMatchObject({ version: 1, value: 1 });
 });
 ```
 
-Each positional reducer argument is serialized as one CLI token. Arrays and objects become JSON
-tokens, so the four arguments above match:
-`append_events(stream_id, stream_type, expected_version, events, metadata)`.
+Each positional reducer argument is serialized as one CLI token. A command such as
+`increment(counter_id, command_id, by)` is therefore three tokens. The module, not the test, decides
+the stream id, event id, event type, payload, and expected version. Never call a generic
+`append_events` reducer from a browser-facing path; see the backend-owned command contract in the
+[event-sourcing plan](event-sourcing-plan.md#183-command-payload-contract).
 
 ## 3. Connecting to an external server
 
@@ -156,7 +149,7 @@ await client.waitFor((c) => c.rows('counter_summary').length === 1, {
   description: 'initial counter summary',
 });
 
-await env.call(/* append another event */);
+await env.call('increment', ['counter-1', 'it-2', 1]);
 
 await client.waitFor((c) =>
   c.rows('counter_summary').some((row) => row.stream_id === 'counter-1' && row.value === 2),
@@ -186,22 +179,31 @@ const client = await env.connect({
 ## 7. Identities and concurrency
 
 Two anonymous CLI calls use distinct throwaway identities. Owner SQL sees all rows; anonymous SQL
-uses the database owner identity unless you pass `{ anonymous: true }`. This lets you assert that a
-public view is readable while private tables remain owner-only:
+uses the database owner identity unless you pass `{ anonymous: true }`. Command reducers use
+`ctx.sender`, so finish owner setup with the saved CLI identity, then use anonymous calls to assert
+that a non-owner is rejected:
 
 ```ts
 await Promise.all([
-  env.call('append_events', ['alice', 'Counter', 0, [eventA], null], { anonymous: true }),
-  env.call('append_events', ['bob', 'Counter', 0, [eventB], null], { anonymous: true }),
+  env.call('claim_counter', ['alice', 'claim-alice']),
+  env.call('claim_counter', ['bob', 'claim-bob']),
+]);
+await Promise.all([
+  env.call('increment', ['alice', 'cmd-alice', 1]),
+  env.call('increment', ['bob', 'cmd-bob', 2]),
 ]);
 
-const rows = (await env.sql('SELECT stream_id, created_by FROM es_event', { anonymous: true })).rows;
+await expect(
+  env.call('increment', ['alice', 'cmd-intruder', 1], { anonymous: true }),
+).rejects.toThrow();
+
+const rows = (await env.sql('SELECT stream_id, created_by FROM es_event')).rows;
 expect(rows).toHaveLength(2);
 ```
 
-Each stream has its own version, so independent writers do not conflict. Use
-`ES_ERROR.EXPECTED_VERSION_MISMATCH` assertions for same-stream races; generate fresh event ids for
-the retry so dedupe does not turn the stale attempt into a replay. See
+The module chooses each stream's expected version, so same-stream races are resolved there. A retry
+of the same `commandId` is an idempotent replay: the module derives the same event id and
+`appendToStream` writes nothing twice. See
 [API reference](API.md#41-module-and-client-helpers) for offline error helpers.
 
 ## 8. Teardown and failures
@@ -229,7 +231,7 @@ running in CI.
 | `Cannot read properties of undefined` in a subscription test | The table/view name in `client.rows(...)` must match the key emitted by the SQL subscription. |
 | Subscription wait times out | Check the exact query, whether the view is public, and whether the expected event was appended after the subscription started. Increase `timeoutMs`. |
 | Anonymous SQL cannot see a table | Private tables are owner-only. Query the app's public view with `{ anonymous: true }`. |
-| Stale-version test returns `replayed` | Use fresh event ids; dedupe runs before the version check. |
+| Repeating a command seems to do nothing | That is the intended idempotent replay: the module derives the event id from `commandId`. Use a fresh command id for a new intent. |
 | Tests leak state between cases | Create one environment per test and dispose it in `finally`/`afterEach`. |
 | Browser bundle fails to import the kit | Correct: import from `stdb-es/testing/integration` only in Node tests. Keep client code on `stdb-es/client`. |
 
