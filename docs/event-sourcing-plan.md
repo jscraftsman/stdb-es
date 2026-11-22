@@ -912,7 +912,7 @@ const env = await createIntegrationEnv({
   database: `my-app-test-${nonce}`,
   modulePath: 'spacetimedb',                  // publishes with --delete-data
 });
-await env.call('increment', [/* positional CLI args: counterId, by, commandId */]);
+await env.call('increment', [/* positional CLI args: counterId, commandId, by */]);
 await env.sql('SELECT version FROM es_stream');                  // owner
 await env.sql('SELECT * FROM summary', { anonymous: true });     // public view
 const client = await env.connect({
@@ -923,8 +923,9 @@ await client.waitFor((c) => c.rows('summary').length === 1);
 await env.dispose();
 ```
 
-The reducer name and positional order are app-defined; the example assumes an
-`increment(counterId, by, commandId)` reducer.
+The reducer name and positional order are app-defined. This example follows the shipped integration
+fixture's `increment(counterId, commandId, by)` reducer; the counter example set declares
+`increment(counterId, by, commandId)` instead. Follow each module's exported field order.
 
 - Readiness check, publish, identities, SQL result parsing, subscription convergence, parameterized
   view subscriptions, stale-version rejection, replay after cache loss, and teardown.
@@ -1246,7 +1247,9 @@ are complete, and the markdown link/fence check is green.
 `AppendCallArgs`/`AppendCall`/`FakeAppend*` types are no longer exported from `stdb-es/testing`;
 client tests use `createFakeCommand`. The contract suite's `append` option remains a server-only
 fixture seam for store invariants, and the optional `commands` block covers the browser boundary.
-The Phase 3 and Phase 6 entries above remain the historical M15 rollout record.
+Phase 4 keeps the integration kit reducer-agnostic and command-based: no browser append binding was
+reintroduced, and an attached environment (`publish: false`) keeps its database on `dispose()` by
+default. The Phase 3 and Phase 6 entries above remain the historical M15 rollout record.
 
 Independent of M15, M9–M13 and M14 stay paused/deferred as recorded in §15.
 

@@ -68,9 +68,24 @@ export function parseSqlResult(output: string): IntegrationSqlResult {
   };
 }
 
-/** Formats CLI positional arguments. Objects and arrays become one JSON token each. */
+function jsonToken(value: unknown, index: number): string {
+  try {
+    const token = JSON.stringify(value);
+    if (token !== undefined) return token;
+  } catch (error) {
+    throw new TypeError(
+      `cliArgs: argument ${index} is not JSON-serializable: ${(error as Error).message}`,
+    );
+  }
+  throw new TypeError(`cliArgs: argument ${index} is not JSON-serializable`);
+}
+
+/**
+ * Formats CLI positional arguments. Array elements become one JSON token each;
+ * a bare object becomes a single JSON token.
+ */
 export function cliArgs(args?: object | readonly unknown[]): string[] {
   if (args === undefined) return [];
-  if (Array.isArray(args)) return args.map((value) => JSON.stringify(value));
-  return [JSON.stringify(args)];
+  if (Array.isArray(args)) return args.map((value, index) => jsonToken(value, index));
+  return [jsonToken(args, 0)];
 }

@@ -476,18 +476,21 @@ it does not contend with another server's `spacetime.pid` lock. See the
 | `publish` | `true` | Publish during setup. Set `false` to attach to an existing database. |
 | `deleteData` | `true` | Publish with `--delete-data=always`. Only use against disposable databases. |
 | `port` | free port | Listen port in owned local mode. |
-| `keepDatabase` | `false` | Leave the database during `dispose()`. |
+| `keepDatabase` | `false` when publishing, `true` when attaching | Leave the database during `dispose()`. An explicit value always wins. |
 | `keepServer` | `false` | Leave an owned local server running during `dispose()`. |
 | `timeoutMs` | `120000` | Readiness and default `waitFor` timeout. |
+
+Attached environments (`publish: false`) keep their database on `dispose()` by default; pass
+`keepDatabase: false` explicitly to delete one.
 
 ### 5.2 `IntegrationEnv`
 
 | Member | Inputs | Output / behavior |
 | --- | --- | --- |
-| `server` | — | Resolved HTTP URL. |
+| `server` | — | URL or CLI nickname used for CLI calls; WS URLs are normalized to HTTP. |
 | `database` | — | Database name. |
-| `modulePath` | — | Resolved module path. |
-| `call(name, args?, options?)` | Reducer/procedure name; array of positional CLI values; optional `{ anonymous }` | `Promise<void>`. Objects and arrays are JSON tokens. |
+| `modulePath` | — | Module path passed to `spacetime publish -p`, relative to `cwd` when relative. |
+| `call(name, args?, options?)` | Reducer/procedure name; object or array of positional CLI values; optional `{ anonymous }` | `Promise<void>`. Each array element is one JSON token; a bare object is one JSON token. Non-serializable values throw. |
 | `sql(query, options?)` | SQL statement; optional `{ anonymous }` | `{ rows, statements }`. Rows are keyed by column name. |
 | `connect(options?)` | `{ anonymous?, queries?, printInitialUpdate?, timeoutMs? }` | `IntegrationClient` backed by `spacetime subscribe`. |
 | `waitFor(predicate, options?)` | Sync/async predicate; `{ timeoutMs?, intervalMs?, description? }` | `Promise<void>`; throws with the description on timeout. |

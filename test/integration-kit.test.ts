@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cliArgs, parseSqlResult } from '../src/testing/integration/cli.js';
 import { CliIntegrationClient } from '../src/testing/integration/client.js';
-import { integrationDatabase } from '../src/testing/integration/env.js';
+import { integrationDatabase, shouldDeleteDatabase } from '../src/testing/integration/env.js';
 import { waitFor } from '../src/testing/integration/util.js';
 
 describe('integration database names', () => {
@@ -18,6 +18,15 @@ describe('integration database names', () => {
   });
 });
 
+describe('integration database retention', () => {
+  it('keeps an attached database unless deletion is explicit', () => {
+    expect(shouldDeleteDatabase({ publish: false })).toBe(false);
+    expect(shouldDeleteDatabase({ publish: false, keepDatabase: false })).toBe(true);
+    expect(shouldDeleteDatabase({ publish: true })).toBe(true);
+    expect(shouldDeleteDatabase({ keepDatabase: true })).toBe(false);
+  });
+});
+
 describe('CLI formatting and SQL parsing', () => {
   it('serializes each positional argument separately', () => {
     expect(cliArgs(['stream', 0, { event_id: 'e1' }, null])).toEqual([
@@ -31,6 +40,13 @@ describe('CLI formatting and SQL parsing', () => {
 
   it('serializes command payloads as positional CLI tokens', () => {
     expect(cliArgs(['counter-1', 'cmd-1', 2])).toEqual(['"counter-1"', '"cmd-1"', '2']);
+    expect(cliArgs({ counterId: 'counter-1', by: 1, commandId: 'cmd-1' })).toEqual([
+      '{"counterId":"counter-1","by":1,"commandId":"cmd-1"}',
+    ]);
+  });
+
+  it('rejects positional values that cannot be serialized', () => {
+    expect(() => cliArgs(['ok', undefined])).toThrow(/argument 1/);
   });
 
   it('maps CLI columns and rows into keyed objects', () => {

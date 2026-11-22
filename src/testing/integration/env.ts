@@ -9,6 +9,20 @@ import { CliIntegrationClient } from './client.js';
 import type { CreateIntegrationEnvOptions, IntegrationEnv } from './types.js';
 import { delay, waitFor } from './util.js';
 
+/**
+ * Whether `dispose()` should delete this environment's database.
+ *
+ * An env that published its own database is disposable by default. An env that
+ * attached with `publish: false` did not create the database, so it keeps it
+ * unless the caller explicitly opts into deletion with `keepDatabase: false`.
+ */
+export function shouldDeleteDatabase(
+  options: Pick<CreateIntegrationEnvOptions, 'publish' | 'keepDatabase'>,
+): boolean {
+  const keepDatabase = options.keepDatabase ?? options.publish === false;
+  return !keepDatabase;
+}
+
 /** Builds a CLI-safe database name with a random suffix. */
 export function integrationDatabase(prefix = 'stdb-es-test'): string {
   const clean =
@@ -99,7 +113,7 @@ export async function createIntegrationEnv(
     );
     clients.clear();
 
-    if (!options.keepDatabase) {
+    if (shouldDeleteDatabase(options)) {
       // A disposable server disappears on stop, so a failed delete is not a
       // reason to abort teardown.
       await runCli(['delete', '-s', serverArg, database, '-y'], cwd).catch(() => undefined);

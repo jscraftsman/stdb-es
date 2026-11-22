@@ -105,8 +105,11 @@ owned server; any other nickname is assumed to be external.
 | `deleteData` | `true` | Publishes with `--delete-data=always`. Safe for a disposable database. |
 | `port` | free port | Listen port in owned `'local'` mode. |
 | `timeoutMs` | `120000` | Server readiness and default `waitFor` timeout. |
-| `keepDatabase` | `false` | Leave the database in place during `dispose()`. |
+| `keepDatabase` | `false` when publishing, `true` when attaching | Leave the database in place during `dispose()`. An explicit value always wins. |
 | `keepServer` | `false` | Leave an owned local server running during `dispose()`. |
+
+With `publish: false`, the kit assumes the database was created elsewhere and keeps it during
+`dispose()` unless you explicitly pass `keepDatabase: false`.
 
 `integrationDatabase(prefix?)` is exported for generating additional valid names, for example when
 one test needs two environments.
@@ -115,9 +118,9 @@ one test needs two environments.
 
 | Member | Purpose |
 | --- | --- |
-| `env.server` | Resolved HTTP URL (WS URLs are normalized for CLI calls). |
+| `env.server` | URL or CLI nickname used for CLI calls (WS URLs are normalized to HTTP). |
 | `env.database` | Database name used by the environment. |
-| `env.modulePath` | Resolved module path. |
+| `env.modulePath` | Module path passed to `spacetime publish -p` (relative to `cwd` when relative). |
 | `env.call(name, args?, options?)` | Calls a reducer or procedure. Pass an array of positional CLI arguments. `options.anonymous` uses a throwaway identity. |
 | `env.sql(query, options?)` | Runs SQL as the owner, or anonymously with `{ anonymous: true }`. Returns `{ rows, statements }` with column-keyed rows. |
 | `env.connect(options?)` | Starts a live subscription client. Options: `anonymous`, `queries`, `printInitialUpdate`, `timeoutMs`. |
@@ -212,15 +215,15 @@ Always use `try`/`finally` or an `afterEach` hook. `dispose()`:
 
 1. closes every client created by `connect()` (terminating their subscription processes);
 2. deletes the disposable database, ignoring failures because an in-memory local server may already
-   be gone;
+   be gone — unless `keepDatabase` is set, which is the default for `publish: false`;
 3. stops the spawned server process tree in owned `'local'` mode and removes its temporary data
    directory.
 
-In external URL mode, steps 2–3 do not stop the shared server or delete anything outside the
-environment's own disposable database.
+In external URL mode, steps 2–3 do not stop the shared server. An attached environment with
+`publish: false` keeps its database by default, so it never deletes a database created elsewhere.
 
-Use `keepDatabase: true` or `keepServer: true` only while debugging. Do not leave a local server
-running in CI.
+Use `keepServer: true` only while debugging. Do not leave a local server running in CI. To delete an
+attached database, pass `keepDatabase: false` explicitly.
 
 ## 9. Troubleshooting
 

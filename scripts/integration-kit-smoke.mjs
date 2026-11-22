@@ -139,6 +139,58 @@ async function run() {
       anonymousRows.some((row) => row.stream_id === counterStream('concurrent-1') && row.value === 7),
     );
 
+    console.log('Attached database mode:');
+
+    const eventsBeforeAttach = (await local.sql('SELECT * FROM es_event')).rows.length;
+    const attached = await createIntegrationEnv({
+      server: local.server,
+      database: local.database,
+      modulePath,
+      publish: false,
+    });
+    await attached.dispose();
+    const eventsAfterAttach = (await local.sql('SELECT * FROM es_event')).rows.length;
+    check(
+      'attached env disposal preserved the existing database',
+      eventsAfterAttach === eventsBeforeAttach,
+      `${eventsBeforeAttach} before, ${eventsAfterAttach} after`,
+    );
+
+    console.log('Other command reducers:');
+
+    await claim(local, 'decrement-1', 'smoke-dec-claim');
+    await local.call('decrement', ['decrement-1', 'smoke-dec-1', 3]);
+    await claim(local, 'reset-1', 'smoke-reset-claim');
+    await local.call('reset', ['reset-1', 'smoke-reset-1']);
+    const [decrementRows, resetRows] = await Promise.all([
+      local.sql(
+        `SELECT * FROM counter_state WHERE stream_id = '${counterStream('decrement-1')}'`,
+      ),
+      local.sql(`SELECT * FROM counter_state WHERE stream_id = '${counterStream('reset-1')}'`),
+    ]);
+    const commandRows = [...decrementRows.rows, ...resetRows.rows];
+    check(
+      'decrement and reset updated their streams',
+      commandRows.length === 2 &&
+        commandRows.some(
+          (row) => row.stream_id === counterStream('decrement-1') && row.value === -3,
+        ) &&
+        commandRows.some((row) => row.stream_id === counterStream('reset-1') && row.value === 0),
+      JSON.stringify(commandRows),
+    );
+    const [decrementEvents, resetEvents] = await Promise.all([
+      local.sql(`SELECT event_type FROM es_event WHERE stream_id = '${counterStream('decrement-1')}'`),
+      local.sql(`SELECT event_type FROM es_event WHERE stream_id = '${counterStream('reset-1')}'`),
+    ]);
+    const commandEventTypes = [...decrementEvents.rows, ...resetEvents.rows].map(
+      (row) => row.event_type,
+    );
+    check(
+      'decrement and reset derived their event types',
+      commandEventTypes.includes('Decremented') && commandEventTypes.includes('Reset'),
+      JSON.stringify(commandEventTypes),
+    );
+
     console.log('External URL mode:');
 
     external = await createIntegrationEnv({

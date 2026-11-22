@@ -80,7 +80,10 @@ export type CreateIntegrationEnvOptions = {
   deleteData?: boolean;
   /** Port used by `'local'`. A free port is chosen when omitted. */
   port?: number;
-  /** Keep the database during `dispose()` instead of deleting it. */
+  /**
+   * Keep the database during `dispose()` instead of deleting it. Defaults to
+   * `false` when publishing and `true` when attaching with `publish: false`.
+   */
   keepDatabase?: boolean;
   /** Keep a spawned local server running during `dispose()`. */
   keepServer?: boolean;
