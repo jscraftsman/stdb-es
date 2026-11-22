@@ -1,6 +1,6 @@
 {
   "name": "stdb-es",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Add event sourcing to your TypeScript SpacetimeDB app with append-only streams, safe retries, replayable state, and live read models.",
   "license": "MIT",
   "author": "gervel@jscraftsman.com",
