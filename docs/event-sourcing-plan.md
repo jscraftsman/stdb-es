@@ -1243,13 +1243,16 @@ check. Server-only `appendToStream` remains documented as a module seam; `create
 deprecated. `docs/integration testing.md` needed no further migration. The plan status and M15 row
 are complete, and the markdown link/fence check is green.
 
-**Post-M15 audit state (Phase 3 unit-kit cleanup).** `createFakeAppend` and its
+**Post-M15 audit state (Phases 3–5 cleanup).** `createFakeAppend` and its
 `AppendCallArgs`/`AppendCall`/`FakeAppend*` types are no longer exported from `stdb-es/testing`;
 client tests use `createFakeCommand`. The contract suite's `append` option remains a server-only
 fixture seam for store invariants, and the optional `commands` block covers the browser boundary.
 Phase 4 keeps the integration kit reducer-agnostic and command-based: no browser append binding was
 reintroduced, and an attached environment (`publish: false`) keeps its database on `dispose()` by
-default. The Phase 3 and Phase 6 entries above remain the historical M15 rollout record.
+default. Phase 5 keeps both examples command-only: generated bindings expose only `increment`,
+`decrement`, and `reset`; the web app dispatches through `createCommandClient`; and the example
+typechecks, unit tests, and live integration suite are green. The Phase 3 and Phase 6 entries above
+remain the historical M15 rollout record.
 
 Independent of M15, M9–M13 and M14 stay paused/deferred as recorded in §15.
 

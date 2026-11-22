@@ -7,7 +7,8 @@
     "build": "spacetime build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "publish": "spacetime publish stdb-es-counter-with-frontend -s local --delete-data=always -y"
+    "publish": "spacetime publish stdb-es-counter-with-frontend -s local -p .",
+    "publish:clean": "spacetime publish stdb-es-counter-with-frontend -s local -p . --delete-data=always -y"
   },
   "dependencies": {
     "stdb-es": "file:../../../../"

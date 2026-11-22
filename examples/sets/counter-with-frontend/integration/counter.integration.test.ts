@@ -36,18 +36,14 @@ function stream(name: string): string {
 
 function increment(
   counterId: string,
-  commandId: string,
   by: number,
+  commandId: string,
   options?: IntegrationCallOptions,
 ): Promise<void> {
   return env.call('increment', [counterId, by, commandId], options);
 }
 
-function decrement(
-  counterId: string,
-  commandId: string,
-  by: number,
-): Promise<void> {
+function decrement(counterId: string, by: number, commandId: string): Promise<void> {
   return env.call('decrement', [counterId, by, commandId]);
 }
 
@@ -70,7 +66,7 @@ describe('counter example set against a real server', () => {
   it('calls a command reducer and reads owner and anonymous views', async () => {
     const id = stream('publish');
 
-    await increment('publish', 'integration-publish-1', 5, { anonymous: true });
+    await increment('publish', 5, 'integration-publish-1', { anonymous: true });
 
     const events = await eventRows(id);
     expect(events).toHaveLength(1);
@@ -91,8 +87,8 @@ describe('counter example set against a real server', () => {
   it('replays a repeated command id without appending twice', async () => {
     const id = stream('retry');
 
-    await increment('retry', 'integration-retry-1', 2);
-    await increment('retry', 'integration-retry-1', 2);
+    await increment('retry', 2, 'integration-retry-1');
+    await increment('retry', 2, 'integration-retry-1');
 
     const events = await eventRows(id);
     expect(events).toHaveLength(1);
@@ -102,10 +98,10 @@ describe('counter example set against a real server', () => {
 
   it('rejects a non-owner targeting another caller’s counter', async () => {
     const id = stream('ownership');
-    await increment('ownership', 'integration-owner-1', 3);
+    await increment('ownership', 3, 'integration-owner-1');
 
     await expect(
-      increment('ownership', 'integration-intruder-1', 99, { anonymous: true }),
+      increment('ownership', 99, 'integration-intruder-1', { anonymous: true }),
     ).rejects.toThrow();
 
     expect(await eventRows(id)).toHaveLength(1);
@@ -123,7 +119,7 @@ describe('counter example set against a real server', () => {
     });
 
     try {
-      await increment('live', 'integration-live-1', 2);
+      await increment('live', 2, 'integration-live-1');
       await client.waitFor(
         (c) =>
           c.rows(TABLES_COUNTER.summary).some(
@@ -135,7 +131,7 @@ describe('counter example set against a real server', () => {
         description: 'first parameterized view row',
       });
 
-      await decrement('live', 'integration-live-2', 3);
+      await decrement('live', 3, 'integration-live-2');
       await client.waitFor(
         (c) =>
           c.rows(TABLES_COUNTER.summary).some(

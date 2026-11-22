@@ -39,6 +39,9 @@ That command:
 starting Vite. Use `npm run example:set:counter:publish-clean` only when you deliberately want to
 reset the scratch database with `--delete-data=always`.
 
+The module subproject also exposes a non-destructive `publish` script and a separate `publish:clean`
+script; run them with `npm --prefix examples/sets/counter-with-frontend/spacetimedb run <script>`.
+
 After the first publish, you can start only the web app with:
 
 ```bash
@@ -50,7 +53,8 @@ Environment overrides for the web app: `VITE_STDB_URI` (default `ws://localhost:
 
 ## Test it offline
 
-No server, database, or generated bindings are needed for the unit tests:
+No server or database is needed for the unit tests; the committed generated bindings satisfy the web
+type imports:
 
 ```bash
 npm run example:set:counter:test

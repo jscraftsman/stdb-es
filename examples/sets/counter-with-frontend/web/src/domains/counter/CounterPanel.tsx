@@ -35,7 +35,7 @@ export function CounterPanel({ rows, ready }: Props) {
     setBusy(true);
     setMessage(null);
     try {
-      // The returned envelope can be retried verbatim after a timeout.
+      // sendNew returns a retryable envelope; this demo does not persist it.
       await commands.sendNew(name, command);
       setMessage('Command accepted. The view will refresh when the subscription applies.');
     } catch (cause) {
