@@ -1,3 +1,12 @@
+## 0.4.1 (2026-11-22)
+
+### Refactor
+
+- **Cleanup**: Phase 5: Cleanup of docs after applying new write boundary - updated examples
+- **Cleanup**: Phase 4: Cleanup of docs after applying new write boundary - updated items related to integration testing kit
+- **Cleanup**: Phase 3: Cleanup of docs after applying new write boundary - updated items related to unit testing kit
+- **Cleanup**: Phase 2: Cleanup of docs after applying new write boundary - updated core source code and docs
+
 ## 0.4.0 (2026-11-21)
 
 ### BREAKING CHANGE
