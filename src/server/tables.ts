@@ -52,7 +52,7 @@ export const esEvent = table(
     ],
   },
   {
-    /** Client-supplied UUIDv7. Primary key gives cross-stream dedupe. */
+    /** Module-derived id, usually from `commandId`. Primary key gives cross-stream dedupe. */
     eventId: t.string().primaryKey(),
     /** Gapless, commit-ordered global position from `esHead`. */
     position: t.u64(),

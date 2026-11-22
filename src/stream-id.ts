@@ -28,13 +28,13 @@ function keyToString(key: StreamIdKey): string {
 /**
  * Builds a stable, validated stream id of the form `<prefix>-<key>`.
  *
- * Use this in client code that creates a stream before its first append, and in
- * module code that derives a stream id from authenticated data. It keeps the
- * separator unambiguous, rejects id-shaped strings that can break SQL queries
- * or logs, and enforces the same 256-character limit as the append path.
+ * Use this in module code that derives a stream id from validated command data,
+ * and in client code that formats the same id for read-side queries or subscriptions.
+ * It keeps the separator unambiguous, rejects id-shaped strings that can break SQL
+ * queries or logs, and enforces the same 256-character limit as the append path.
  *
- * It is a formatting helper only. The caller still owns authorization and the
- * decision of whether the client or the module may choose a stream id.
+ * It is a formatting helper only. The module owns write-side stream ids and authorization;
+ * browser commands must not send a stream id as part of the command payload.
  */
 export function streamId(prefix: string, key: StreamIdKey): string {
   if (!PREFIX_PATTERN.test(prefix)) {

@@ -77,7 +77,8 @@ Validation rules:
 - The resulting id must be at most 256 characters, matching `appendToStream`.
 
 `streamId` is a formatting helper only. It does not decide who may create a stream and does not check
-ownership. Import it from `stdb-es` in both module and client code, and keep the prefix in an
+ownership. Import it from `stdb-es` in module code for write-side ids and in client code for read-side
+queries and subscriptions; browser commands must not carry a stream id. Keep the prefix in an
 app-owned `STREAM_PREFIXES_<DOMAIN>` constant.
 
 ### 1.4 Protocol constants
@@ -199,10 +200,10 @@ payload.
 | `StateCache<TState, C>` | Adapter over an app-owned typed table | `load(ctx, streamId)`, `save(ctx, streamId, version, state)`, `remove(ctx, streamId)` | `load` returns `CachedState \| null`. `save`/`remove` return `void`. |
 | `EncodedDomainEvent` | Encoder output for one domain event | `eventType: string`, `data: unknown`, `metadata?: string \| null` | `data` is JSON-serialized by the repository |
 | `EventEncoder<TEvent>` | Converts a domain event to wire data | `(event: TEvent) => EncodedDomainEvent` | Must be deterministic |
-| `RepositoryOptions<TState, TEvent, C>` | Repository configuration | AggregateDefinition fields plus `encode`, optional `cache`, optional `newEventId(ctx)` | `newEventId` defaults to `ctx.newUuidV7().toString()` |
+| `RepositoryOptions<TState, TEvent, C>` | Repository configuration | AggregateDefinition fields plus `encode`, optional `cache`, optional `newEventId(ctx)` | `newEventId` defaults to `ctx.newUuidV7().toString()` for repository-generated batches |
 | `LoadedAggregate<TState>` | A loaded or fresh aggregate | `id`, `version`, `state` | `version = 0` means no events |
 | `LoadOptions` | Bounds for `Repository.load` / `loadOrCreate` | `atVersion?`, `atTimestampMicros?` | A time bound forces replay; a version bound ignores newer caches |
-| `SaveOptions` | Options for `Repository.save` | `expectedVersion?`, `metadata?` | `expectedVersion` defaults to `aggregate.version` |
+| `SaveOptions` | Options for `Repository.save` | `expectedVersion?`, `metadata?`, `eventIds?: readonly string[]` | `expectedVersion` defaults to `aggregate.version`; `eventIds` must match `events.length` |
 | `Repository<TState, TEvent, C>` | Typed command-side access to one aggregate kind | Constructed with `RepositoryOptions` | Methods below |
 | `makeRepository(definition, opts)` | Builds a repository from an aggregate definition | `definition`, options excluding the definition fields | `Repository` |
 
@@ -215,6 +216,11 @@ payload.
 | `loadOrCreate(ctx, id, opts?)` | Same as `load` | `LoadedAggregate`; falls back to `create` when the stream is missing |
 | `save(ctx, aggregate, events, opts?)` | Context, aggregate, events, optional `SaveOptions` | `AppendResult \| null`. Returns `null` for an empty event array. Appends with the expected version, folds new rows into the aggregate, and writes the cache. A replayed batch is not folded twice. |
 | `invalidate(ctx, streamId)` | Context, id | `void`; removes the cache row so the next load replays |
+
+For command-reducer writes, pass `eventIds` derived from the command's `commandId`. A retried command
+then reaches `appendToStream` with the same ids and settles as a replay. The default
+`newEventId`/`ctx.newUuidV7()` path is for server-side fixtures and non-command module code, not for
+browser idempotency.
 
 A missing cache row is always recovered by replay. A stale cache degrades performance, not
 correctness.

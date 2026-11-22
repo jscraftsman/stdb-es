@@ -1,6 +1,8 @@
+import { ES_ERROR } from '../errors.js';
 import type { AppendResult } from './protocol.js';
 import { appendToStream } from './append.js';
 import type { AggregateDefinition } from './aggregate.js';
+import { esError } from './errors.js';
 import { readStream } from './read.js';
 import type { EsCtx, EventRow } from './tables.js';
 
@@ -36,8 +38,8 @@ export type EncodedDomainEvent = {
 };
 
 /**
- * Wire encoding for a domain event. Called once per appended event; keep it
- * deterministic so retries encode identically.
+ * Wire encoding for a domain event. Called once per appended event on the module
+ * side; keep it deterministic so replay and rebuild agree with live folds.
  */
 export type EventEncoder<TEvent> = (event: TEvent) => EncodedDomainEvent;
 
@@ -50,7 +52,11 @@ export type RepositoryOptions<TState, TEvent, C extends EsCtx = EsCtx> = {
   encode: EventEncoder<TEvent>;
   /** Optional current-state cache. Strongly recommended for long streams. */
   cache?: StateCache<TState, C>;
-  /** Defaults to `ctx.newUuidV7()`, which is time-ordered and index-friendly. */
+  /**
+   * Default event-id generator for repository-generated batches. Command reducers
+   * should pass `SaveOptions.eventIds` derived from their `commandId` instead, so
+   * a retry replays instead of appending new events.
+   */
   newEventId?: (ctx: C) => string;
 };
 
@@ -76,6 +82,12 @@ export type SaveOptions = {
    */
   expectedVersion?: number;
   metadata?: string | null;
+  /**
+   * Explicit event ids in the same order as `events`. A command reducer should
+   * derive them from `commandId`; repeating the same ids makes `save` replay the
+   * batch instead of appending duplicates.
+   */
+  eventIds?: readonly string[];
 };
 
 /**
@@ -142,9 +154,9 @@ export class Repository<TState, TEvent, C extends EsCtx = EsCtx> {
   /**
    * Appends new events and updates the cache in one transaction.
    *
-   * Returns null when there is nothing to append. Re-raised events from a
-   * retried command are deduplicated by `eventId` and are not re-applied to
-   * `aggregate.state` a second time.
+   * Returns null when there is nothing to append. Pass `eventIds` derived from
+   * the command's `commandId` for browser-facing writes: a retried command then
+   * replays the same batch and is not re-applied to `aggregate.state`.
    */
   save(
     ctx: C,
@@ -153,12 +165,19 @@ export class Repository<TState, TEvent, C extends EsCtx = EsCtx> {
     opts: SaveOptions = {},
   ): AppendResult | null {
     if (events.length === 0) return null;
+    if (opts.eventIds !== undefined && opts.eventIds.length !== events.length) {
+      throw esError(
+        ES_ERROR.INVALID_BATCH,
+        `eventIds must match events length (${opts.eventIds.length} != ${events.length})`,
+      );
+    }
 
     const expectedVersion = opts.expectedVersion ?? aggregate.version;
-    const encoded = events.map((event) => {
+    const encoded = events.map((event, index) => {
       const encodedEvent = this.#opts.encode(event);
       return {
-        eventId: this.#opts.newEventId?.(ctx) ?? ctx.newUuidV7().toString(),
+        eventId:
+          opts.eventIds?.[index] ?? this.#opts.newEventId?.(ctx) ?? ctx.newUuidV7().toString(),
         eventType: encodedEvent.eventType,
         data: JSON.stringify(encodedEvent.data),
         metadata: encodedEvent.metadata ?? opts.metadata ?? null,

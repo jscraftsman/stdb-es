@@ -1126,9 +1126,10 @@ The browser never supplies `streamId`, `streamType`, `eventType`, `data`, `event
 2. **Mirrored to the frontend by `spacetime generate`.** Web code imports command payload types
    from its generated bindings (the counter set already generates into `web/src/generated/`); it
    must not redeclare them. A generated command reducer is the only callable write surface.
-3. **Idempotency key.** Every command carries a caller-generated `commandId` (UUIDv7, same role as
-   today's event id). The backend derives event ids deterministically from the command id, so a
-   retry of the same command deduplicates in `appendToStream` instead of appending twice.
+3. **Idempotency key.** Every command carries a caller-generated `commandId` (an opaque string;
+   `newCommandId()` defaults to `crypto.randomUUID()`). The backend derives event ids deterministically
+   from the command id, so a retry of the same command deduplicates in `appendToStream` instead of
+   appending twice.
 4. **Server-side derivation.** The reducer resolves `streamId` via app-owned constants
    (`streamId(STREAM_PREFIXES_COUNTER.counter, command.counterId)`), checks ownership against
    `ctx.sender`, validates domain rules (for example `by > 0`), builds encoded events, and calls

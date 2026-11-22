@@ -1196,9 +1196,10 @@ counter reducer with ownership and deterministic event ids.
 
 `makeRepository(...).save(...)` is also a **module-only** seam: a command reducer may use it instead of
 calling `appendToStream` directly. It appends with the expected version, folds new rows into the
-loaded aggregate, and writes the cache in one transaction. It still needs a caller-generated or
-command-derived event id; browser code never calls it. The same rule applies to `ids`, `wireEvents`,
-and `expectAppendError`: they are fixtures for server-side tests, not client write APIs.
+loaded aggregate, and writes the cache in one transaction. Pass `eventIds` derived from the command's
+`commandId` so a retried command replays the same batch. Browser code never calls it. The same rule
+applies to `ids`, `wireEvents`, and `expectAppendError`: they are fixtures for server-side tests, not
+client write APIs.
 
 > Do not export a generic `append_events` reducer. A browser calling it could choose `streamId`,
 > `eventType`, and `data` for any stream. The generated bindings for `increment`, `decrement`, and
@@ -1709,8 +1710,9 @@ you. Browser code may format an id for reads; only the module may decide which i
 | **Browser (read-only)** | The client already knows the business id and needs a view query or subscription key | Use `streamId` for the query only; never send the id as a write field |
 
 Use the same `STREAM_PREFIXES_*` value on both sides so read queries and derived write ids agree.
-Event ids are a separate concern: command reducers derive them from `commandId`, while server-side
-fixtures and `Repository.save` may generate their own ids.
+Event ids are a separate concern: command reducers derive them from `commandId` and pass them to
+`appendToStream` or `Repository.save` as `eventIds`. Only server-side fixtures and non-command module
+code should rely on generated ids.
 
 ---
 

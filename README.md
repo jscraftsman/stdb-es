@@ -57,7 +57,7 @@ These are the terms used by the API and the guides. "Server" means SpacetimeDB m
 | **Stream type** | The aggregate/process kind recorded on a stream, such as `STREAM_TYPES_ORDER.Order`. It lets one module host many kinds of streams. |
 | **Event** | A fact that has happened. It is stored as an immutable row in the private `es_event` table. |
 | **Event envelope** | The stable stored columns around the payload: `eventId`, `position`, `streamId`, `streamType`, `version`, `eventType`, `metadata`, timestamps, and sender. |
-| **Event id** | A globally unique id stored on `es_event`. Command reducers derive it deterministically from `commandId`, so a retried command is an idempotent replay. Server-side fixtures and repositories may generate their own ids. |
+| **Event id** | A globally unique id stored on `es_event`. Command reducers derive it deterministically from `commandId`, so a retried command is an idempotent replay. Command reducers using `Repository.save` pass those ids as `eventIds`; only server-side fixtures and non-command module code rely on generated ids. |
 | **Event type** | The string that selects a codec in the client registry, such as `EVENT_TYPES_COUNTER.Incremented`. It is not the stream type. |
 | **Payload / `data`** | The JSON-serializable body of an event, stored as canonical JSON in a string column. The server validates that it is JSON but does not interpret its shape. |
 | **Metadata** | Optional JSON-or-text context attached to an append or an individual event. The store carries it without interpreting it. |
@@ -503,7 +503,8 @@ counter.invalidate(ctx, streamId);              // delete the cache row, force r
 
 `load` is cache-first but version-guarded. A stale, newer-than-stream, or newer-than-`atVersion`
 cache row is ignored and the required tail is replayed. `save` appends, folds the new rows into the
-in-memory aggregate, and writes the cache in the same transaction.
+in-memory aggregate, and writes the cache in the same transaction. Inside a command reducer, pass
+`eventIds` derived from `commandId` so a retry replays instead of appending duplicates.
 
 Also exported: `Aggregate` (class form) and `defineAggregate` (identity helper for functional
 definitions).

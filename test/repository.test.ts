@@ -191,6 +191,40 @@ describe('Repository', () => {
     });
   });
 
+  it('uses command-derived eventIds so a repeated save replays', () => {
+    const test = newHarness();
+    const repo = newRepository();
+
+    tx(test, (ctx) => {
+      const agg = repo.loadOrCreate(ctx, 'counter-1');
+      expect(repo.save(ctx, agg, [inc(5)], { eventIds: ['inc-cmd-retry'] })?.status).toBe(
+        'appended',
+      );
+    });
+    tx(test, (ctx) => {
+      const agg = repo.loadOrCreate(ctx, 'counter-1');
+      expect(repo.save(ctx, agg, [inc(5)], { eventIds: ['inc-cmd-retry'] })?.status).toBe(
+        'replayed',
+      );
+      expect(agg.state).toEqual({ value: 5n });
+      expect(agg.version).toBe(1);
+    });
+
+    expect(test.db.esEvent.count()).toBe(1n);
+  });
+
+  it('rejects eventIds that do not match the batch length', () => {
+    const test = newHarness();
+    const repo = newRepository();
+
+    expect(() =>
+      tx(test, (ctx) => {
+        repo.save(ctx, repo.create('counter-1'), [inc(5)], { eventIds: [] });
+      }),
+    ).toThrow(new RegExp(ES_ERROR.INVALID_BATCH));
+    expect(test.db.esEvent.count()).toBe(0n);
+  });
+
   it('invalidate removes the cache row, forcing a replay', () => {
     const test = newHarness();
     const decode = vi.fn(counterDefinition.decode);
