@@ -5,7 +5,8 @@ const MAX_EVENT_ID_LENGTH = 128;
  * Builds deterministic event ids for fixtures and retry tests.
  *
  * `ids('evt', 3)` returns `['evt-1', 'evt-2', 'evt-3']`. The same inputs always
- * produce the same ids, so replaying a fixture exercises the real dedupe path.
+ * produce the same ids, so replaying a server-side fixture exercises the append
+ * dedupe path.
  */
 export function ids(prefix: string, count: number): string[] {
   if (typeof prefix !== 'string' || prefix.length === 0) {

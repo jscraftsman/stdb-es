@@ -64,7 +64,7 @@ change the design, so they are recorded here rather than quietly edited.
 | ID | Requirement | Acceptance criteria |
 | --- | --- | --- |
 | **R1** | **Core package unit tests** | Every public export in `.`, `./server`, and `./client` has direct coverage; all ten workshop modules have a named test; the contract suite is dogfooded against the counter fixture; `npm test` is green with no live server. |
-| **R2** | **Consumer unit-test tools** | `stdb-es/testing` gives a consumer everything needed to test *their* module and client without a server: harness wrapper, wire fixtures, deterministic ids, append-error assertions for server-side seams, a contract suite with optional command-boundary checks, and a fake `command` binding for client-side tests. `createFakeAppend` remains only as a deprecated migration aid. No network, no Node built-ins, runner-agnostic except for the optional `vitest` peer used by the contract suite. |
+| **R2** | **Consumer unit-test tools** | `stdb-es/testing` gives a consumer everything needed to test *their* module and client without a server: harness wrapper, wire fixtures, deterministic ids, append-error assertions for server-side seams, a contract suite with optional command-boundary checks, and a fake `command` binding for client-side tests. No append fake is shipped; browser tests fake command dispatch instead. No network, no Node built-ins, runner-agnostic except for the optional `vitest` peer used by the contract suite. |
 | **R3** | **Consumer integration-test tools** | A Node-only entry, `stdb-es/testing/integration`, that publishes a module to a disposable database, calls reducers, runs owner and anonymous SQL, connects clients, waits for subscription convergence, and tears down. Works against `spacetime start` locally and a remote server, with no hard dependency on `vitest`. |
 | **R4** | **Package Usage Guide** | `docs/usage-guide.md` with four parts — module, client, testing, frontend. It explains domain-separated module/client layouts, app-owned constants (`<SCOPE>_<DOMAIN>`), read-side codecs, shared `streamId` ownership rules, `commandId` idempotency, time travel, cache recovery, authorization, and all three consumer test layers. |
 | **R5** | **CI gate for the above** | CI runs library and example typechecks, the offline unit suite, a disposable-server publish smoke test, and — once R3 lands — the consumer integration suite. A failure in any layer blocks merge. |
@@ -162,7 +162,8 @@ shows the additive case is safe; it is not part of the v1 API.
 > **Historical pre-M15 layout.** This records the M0–M8 package shape. The browser-facing
 > `client/event-store.ts` and `makeAppendReducer` append surface was removed in M15 (§18); the shipped
 > client entry is command dispatch plus read-side codecs and subscription helpers. `fake-append.ts`
-> remains only as a deprecated migration aid.
+> was retained through M15 as a deprecated migration aid and removed in the post-M15 unit-kit
+> cleanup; the entry below is historical.
 
 ```
 stdb-es/
@@ -889,13 +890,13 @@ createModuleTest(spacetimedb, { ... });      // harness transaction + Range wrap
 ids('evt', n);                               // deterministic, retry-safe fixture ids
 expectAppendError(fn, ES_ERROR.EXPECTED_VERSION_MISMATCH);
 createFakeCommand({ result?, error? });      // client tests: records intent + commandId
-createFakeAppend({ result?, error? });       // deprecated migration aid only
 ```
 
 `createModuleTest` returns `tx`, `call`, `view`, `anonymousView`, and the underlying harness. All
 contexts are shimmed automatically. `createFakeCommand` supports queued `nextResult`/`nextError`
-replies for timeout-and-retry sequences; `createFakeAppend` is kept only for consumers midway through
-the M15 migration. The task-oriented guide lives in `docs/unit testing.md`.
+replies for timeout-and-retry sequences. No append fake is shipped; the browser has no append
+binding, and `wireEvents`/`ids` remain for server-side fixture seams. The task-oriented guide lives
+in `docs/unit testing.md`.
 
 Rules: no network, no Node built-ins, no server. Runner-agnostic except the optional `vitest` peer
 that the contract suite imports. A consumer needs one import and roughly ten lines for a first
@@ -1180,8 +1181,8 @@ surfaces, all owned by phases in §18.6:
 - `stdb-es/client`: `AppendCallArgs`, `AppendCall`, `EventStoreClientOptions.append`,
   `createEventStoreClient(...).append/.retry`, and browser-side `encodeEvents` for writes.
 - `stdb-es/server`: `makeAppendReducer` (no longer a shipped write-path factory).
-- `stdb-es/testing`: `createFakeAppend` (now deprecated in favor of `createFakeCommand`) and the
-  contract suite's `appendEvents` seam (now augmented by optional command-boundary checks).
+- `stdb-es/testing`: `createFakeAppend` was removed in the post-M15 unit-kit cleanup; the contract
+  suite's `appendEvents` seam (now augmented by optional command-boundary checks) remains server-only.
 - `stdb-es/testing/integration` and smoke scripts: `env.call('append_events', ...)` — migrated in
   Phase 4 to command reducer calls against a publishable command fixture.
 - Examples and their README suites — migrated in Phase 5. `docs/API.md` / `docs/usage-guide.md` /
@@ -1240,6 +1241,12 @@ reducers, `createCommandClient`, `createFakeCommand`, and the contract suite's o
 check. Server-only `appendToStream` remains documented as a module seam; `createFakeAppend` is marked
 deprecated. `docs/integration testing.md` needed no further migration. The plan status and M15 row
 are complete, and the markdown link/fence check is green.
+
+**Post-M15 audit state (Phase 3 unit-kit cleanup).** `createFakeAppend` and its
+`AppendCallArgs`/`AppendCall`/`FakeAppend*` types are no longer exported from `stdb-es/testing`;
+client tests use `createFakeCommand`. The contract suite's `append` option remains a server-only
+fixture seam for store invariants, and the optional `commands` block covers the browser boundary.
+The Phase 3 and Phase 6 entries above remain the historical M15 rollout record.
 
 Independent of M15, M9–M13 and M14 stay paused/deferred as recorded in §15.
 

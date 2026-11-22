@@ -15,8 +15,8 @@ type QueuedReply =
  * Stand-in for a generated command reducer binding from `spacetime generate`.
  *
  * It records the intent payload (including `commandId`) and resolves with the
- * configured reply. Unlike the old append fake, it never sees an event, stream
- * id, or expected version: those belong to the module.
+ * configured reply. It carries no event, stream id, or expected version: those
+ * belong to the module.
  */
 export type FakeCommand<TCommand extends object = Record<string, unknown>> =
   CommandCall<TCommand> & {

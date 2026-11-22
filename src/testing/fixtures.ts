@@ -1,7 +1,7 @@
 import type { EncodedEvent } from '../server/index.js';
 import { ids } from './ids.js';
 
-/** Builds one wire event with a JSON payload. */
+/** Builds one wire event for a server-side append fixture. */
 export function wireEvent(eventId: string, eventType: string, payload: unknown): EncodedEvent {
   return { eventId, eventType, data: JSON.stringify(payload) };
 }
@@ -9,8 +9,8 @@ export function wireEvent(eventId: string, eventType: string, payload: unknown):
 /**
  * Builds a batch of wire events from `[eventType, payload]` pairs.
  *
- * Event ids are `${prefix}-1..n`, so retries of the same fixture are
- * deduplicated exactly as a real client retry would be.
+ * Event ids are `${prefix}-1..n`, so replaying a server-side fixture exercises
+ * the real append dedupe path. This is not a browser write API.
  */
 export function wireEvents(
   prefix: string,

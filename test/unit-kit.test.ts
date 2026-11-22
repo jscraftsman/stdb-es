@@ -1,33 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { ES_ERROR, NO_STREAM, buildEsErrorMessage } from '../src/index.js';
+import { ES_ERROR, buildEsErrorMessage } from '../src/index.js';
 import { readStream } from '../src/server/index.js';
+import * as testing from '../src/testing/index.js';
 import {
-  createFakeAppend,
   createFakeCommand,
   createModuleTest,
   expectAppendError,
   ids,
-  type AppendCallArgs,
 } from '../src/testing/index.js';
-import { appendEvents, counterStream, spacetimedb } from './fixture.js';
+import { counterStream, counterStreamId, increment, spacetimedb } from './fixture.js';
 
-function encoded(eventId: string) {
-  return {
-    eventId,
-    eventType: 'Incremented',
-    data: JSON.stringify({ kind: 'Incremented', by: 1 }),
-  };
-}
-
-function appendArgs(streamId = 'counter-1'): AppendCallArgs {
-  return {
-    streamId,
-    streamType: 'Counter',
-    expectedVersion: NO_STREAM,
-    events: ids('seed', 2).map(encoded),
-    metadata: null,
-  };
-}
+describe('stdb-es/testing exports', () => {
+  it('does not export the deprecated append fake', () => {
+    expect(testing).not.toHaveProperty('createFakeAppend');
+    expect(testing.createFakeCommand).toBeTypeOf('function');
+  });
+});
 
 describe('ids', () => {
   it('builds stable, retry-safe event ids', () => {
@@ -80,38 +68,6 @@ describe('expectAppendError', () => {
   });
 });
 
-describe('createFakeAppend', () => {
-  it('records calls and returns the configured result', async () => {
-    const args = appendArgs();
-    const result = { status: 'appended', version: 2 };
-    const fake = createFakeAppend({ result });
-
-    await expect(fake(args)).resolves.toEqual(result);
-    expect(fake.calls).toHaveLength(1);
-    expect(fake.calls[0]).not.toBe(args);
-    expect(fake.calls[0]?.events[0]?.eventId).toBe('seed-1');
-    expect(fake.lastCall).toEqual(args);
-
-    fake.clear();
-    expect(fake.calls).toEqual([]);
-  });
-
-  it('rejects with the configured error', async () => {
-    const fake = createFakeAppend({ error: new Error('timeout') });
-    await expect(fake(appendArgs())).rejects.toThrow('timeout');
-  });
-
-  it('supports queued replies for retry sequences', async () => {
-    const fake = createFakeAppend();
-    fake.nextResult('ok').nextError(new Error('timeout'));
-
-    await expect(fake(appendArgs())).resolves.toBe('ok');
-    await expect(fake(appendArgs())).rejects.toThrow('timeout');
-    await expect(fake(appendArgs())).resolves.toBeUndefined();
-    expect(fake.calls).toHaveLength(3);
-  });
-});
-
 describe('createFakeCommand', () => {
   type Increment = { counterId: string; by: number; commandId: string };
 
@@ -154,24 +110,26 @@ describe('createFakeCommand', () => {
 });
 
 describe('createModuleTest', () => {
-  it('runs reducers and views without a server', () => {
-    const test = createModuleTest(spacetimedb, { appendEvents });
-    const streamId = 'counter-unit-kit';
-
-    test.call('appendEvents', appendArgs(streamId));
-
-    expect(test.tx((ctx) => readStream(ctx, streamId).map((row) => row.version))).toEqual([
-      1, 2,
-    ]);
+  it('runs a command reducer and a view without a server', () => {
+    const test = createModuleTest(spacetimedb, { increment });
+    const counterId = 'counter-unit-kit';
+    const streamId = counterStreamId(counterId);
 
     test.tx((ctx) => {
-      ctx.db.counterOwner.insert({ streamId, owner: test.harness.moduleIdentity });
+      ctx.db.counterOwner.insert({ streamId, owner: ctx.sender });
     });
-    expect(test.view(counterStream, { streamId })).toHaveLength(2);
+
+    test.call('increment', { counterId, by: 2, commandId: 'cmd-unit-kit' });
+
+    expect(test.tx((ctx) => readStream(ctx, streamId).map((row) => row.version))).toEqual([1]);
+    expect(test.tx((ctx) => readStream(ctx, streamId).map((row) => row.eventId))).toEqual([
+      'inc-cmd-unit-kit',
+    ]);
+    expect(test.view(counterStream, { streamId })).toHaveLength(1);
   });
 
   it('uses the default auth unless a call overrides it', () => {
-    const test = createModuleTest(spacetimedb, { appendEvents });
+    const test = createModuleTest(spacetimedb, { increment });
     const seen: string[] = [];
 
     test.tx((ctx) => {

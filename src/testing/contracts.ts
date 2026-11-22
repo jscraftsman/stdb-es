@@ -32,7 +32,7 @@ export type ContractStream<TState = any, TEvent = any> = {
   /** Full replay that ignores the cache, usually `aggregateStream` without a cache. */
   replay: (ctx: any, streamId: string) => TState;
   sample: {
-    /** Events as the append reducer receives them. Ids must be deterministic. */
+    /** Events as the server-side append seam receives them. Ids must be deterministic. */
     wire: (streamId: string) => EncodedEvent[];
     /** The same events as domain values, for `repository.save`. */
     domain: (streamId: string) => TEvent[];

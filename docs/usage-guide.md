@@ -13,7 +13,7 @@ For the complete signature of every export, see [API.md](API.md). For owner-only
 | `stdb-es` | module or client | Error codes, the `streamId` helper, and wire/protocol types |
 | `stdb-es/server` | module only | Tables, append/read helpers, repositories, projections, view factories, doctor helpers |
 | `stdb-es/client` | browser or Node client | Command dispatch, read-side event registry/codecs, subscription query helpers, subscription bridge |
-| `stdb-es/testing` | Vitest tests | Harness shim, wire fixtures, command and legacy append fakes, contract suite |
+| `stdb-es/testing` | Vitest tests | Harness shim, wire fixtures, command fakes, contract suite |
 | `stdb-es/testing/integration` | Node tests only | Disposable server lifecycle, CLI calls, SQL, subscriptions |
 
 > Never import `stdb-es/server` into browser code. Never import Node-only test tooling into a module
@@ -1919,7 +1919,8 @@ it('reuses the command envelope when a dispatch is retried', async () => {
 });
 ```
 
-`createFakeAppend` remains only as a deprecated migration aid. See the
+No append fake is shipped; the browser has no append binding. For server-side fixture seams, use
+`wireEvents`/`ids` with `appendToStream` instead. See the
 [Unit testing guide](unit%20testing.md#5-client-tests-with-a-fake-command) for queued errors and
 rejections, and [the API reference](API.md#41-module-and-client-helpers) for exact signatures.
 

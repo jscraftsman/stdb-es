@@ -16,14 +16,16 @@ fixture ids, provides a fake for generated command bindings, and ships a reusabl
 | `ids(prefix, count)` | Deterministic ids for server-side fixtures and retry tests |
 | `expectAppendError(fn, code)` | Runner-agnostic assertion for a stable `ES_*` store failure |
 | `createFakeCommand<TCommand>(options?)` | Generated command-binding fake that records intent and `commandId` |
-| `createFakeAppend(options?)` | **Deprecated** generated append-binding fake, kept only for mid-migration consumers |
 | `wireEvent`, `wireEvents`, `versions` | Wire-event and assertion fixtures for server-side store tests |
 | `withIndexRanges(ctx)` | Harness shim used automatically by `createModuleTest` |
 | `runEventStoreContractTests(options)` | Shared invariant suite, including optional command-boundary checks |
 
-`vitest` is an optional peer dependency. `createModuleTest`, `ids`, `expectAppendError`,
-`createFakeCommand`, and `createFakeAppend` do not need it; `runEventStoreContractTests` imports
-`describe`/`expect`/`it` from it and registers cases at call time.
+No append fake is shipped: the browser has no append binding. Use `createFakeCommand` for client
+tests; use `wireEvents`/`ids` only with server-side `appendToStream` fixtures.
+
+`vitest` is an optional peer dependency. `createModuleTest`, `ids`, `expectAppendError`, and
+`createFakeCommand` do not need it; `runEventStoreContractTests` imports `describe`/`expect`/`it`
+from it and registers cases at call time.
 
 ---
 
@@ -302,9 +304,8 @@ expect(timeout.calls[0]).toEqual(timeout.calls[1]);
 ```
 
 Queued replies are consumed in order; after the queue is empty the configured default applies.
-`clear()` clears recorded calls without clearing queued replies. `createFakeAppend` has the same
-call-recording API for consumers midway through the migration, but it is deprecated: new client tests
-should use `createFakeCommand`. See
+`clear()` clears recorded calls without clearing queued replies. No append fake is shipped; the
+browser has no append binding. See
 [§18 of the design record](event-sourcing-plan.md#18-frontend-write-boundary-commands-instead-of-append-r9--m15).
 
 ---
@@ -369,7 +370,7 @@ No `spacetime start` is needed. These tests use the in-memory module harness onl
 | Reducer tests fail with a missing datastore error | Add `spacetimedbModuleTestPlugin()` to `vitest.config.ts`. |
 | A stale-version test returns `replayed` | You reused committed event ids in the server-side fixture. Generate fresh ids with a new prefix. |
 | A command replay appears to do nothing | That is correct when `commandId` is repeated. Use a fresh command id for a new intent. |
-| A command fake has no `lastCall` | Use `createFakeCommand`, not the deprecated append fake, and bind it to the generated command reducer. |
+| A command fake has no `lastCall` | Bind `createFakeCommand` to the generated command reducer; the testing entry no longer ships an append fake. |
 | `vitest` import fails | Install the optional peer as a dev dependency when using `runEventStoreContractTests`. |
 | Tests leak state between cases | Create the `createModuleTest` instance inside each `it`. |
 

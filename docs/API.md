@@ -14,7 +14,7 @@ available yet.
 | `stdb-es` | module or client | Stable error codes, error helpers, the `streamId` helper, protocol types and constants |
 | `stdb-es/server` | SpacetimeDB module only | Tables, append/read, aggregates, repositories, projections, views, doctor |
 | `stdb-es/client` | browser or Node client | Command dispatch, event registry/codecs, row helpers, subscription query and event-row helpers |
-| `stdb-es/testing` | offline unit tests | Module/client helpers, command and legacy append fakes, harness shim, fixtures, contract suite |
+| `stdb-es/testing` | offline unit tests | Module/client helpers, command fakes, harness shim, fixtures, contract suite |
 | `stdb-es/testing/integration` | Node-only integration tests | Disposable server/database lifecycle, CLI calls, SQL, subscriptions |
 
 Conventions used below:
@@ -397,9 +397,7 @@ the contract suite. The other tooling in this entry is runner-agnostic. See the
 | `ids(prefix, count)` | Builds deterministic event ids | Non-empty `prefix`; positive safe integer `count` | `string[]` of `${prefix}-1` … `${prefix}-count`; throws on invalid input or ids over 128 characters |
 | `expectAppendError(fn, code)` | Asserts a stable store failure from a server-side seam | A sync or async callback and an `EsErrorCode` | `void` for sync callbacks; `Promise<void>` for async ones. Throws a plain `Error` when no error or a different code occurs. |
 | `createFakeCommand<TCommand>(options?)` | Fakes a generated command reducer binding | Optional `result` or `error`; use `nextResult`/`nextError` for sequences | `FakeCommand<TCommand>` call function with `calls`, `lastCall`, `nextResult`, `nextError`, and `clear` |
-| `createFakeAppend(options?)` | **Deprecated** migration aid for a generated append binding | Optional `result` or `error`; use `nextResult`/`nextError` for sequences | `FakeAppend` call function with `calls`, `lastCall`, `nextResult`, `nextError`, and `clear` |
 | `FakeCommandOptions`, `FakeCommand<TCommand>` | Command-fake types | — | Compile-time only |
-| `AppendCallArgs`, `AppendCall`, `FakeAppendOptions`, `FakeAppend` | Test-only types for the deprecated append fake | — | Compile-time only |
 
 Every context passed to `tx`, `call`, `view`, or `anonymousView` is wrapped with `withIndexRanges`, so
 the 2.15 harness behaves like the real host. `tx` commits when the body returns and rolls back when it
@@ -411,8 +409,8 @@ function directly with the matching harness context type.
 `result`/`error` (default: resolve `undefined`) applies. `clear()` empties `calls` but keeps the queue.
 It never sees a stream id, event, or expected version.
 
-`createFakeAppend` has the same call-recording behavior for consumers midway through the breaking
-change, but the browser no longer has an append binding. Use `createFakeCommand` for new client tests.
+No append fake is shipped: the browser has no append binding. For server-side store tests, use
+`wireEvents`/`ids` with your own `appendToStream` seam, or `expectAppendError` on an existing fixture.
 
 ### 4.2 Harness shim and fixtures
 
