@@ -1,3 +1,10 @@
+## 0.4.2 (2026-11-23)
+
+### Refactor
+
+- **Examples**: Phase 3: Move the files from "examples\set\counter-with-frontend" to "examples\react-counter"
+- **Examples**: Phase 2: Remove the basic "examples/counter"
+
 ## 0.4.1 (2026-11-22)
 
 ### Refactor
