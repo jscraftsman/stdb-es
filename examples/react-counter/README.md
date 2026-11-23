@@ -23,7 +23,7 @@ From the repository root:
 
 ```bash
 npm install
-npm run example:set:counter:start
+npm run example:react-counter:start
 ```
 
 That command:
@@ -35,17 +35,17 @@ That command:
 5. publishes to `stdb-es-counter-with-frontend` on the local server, preserving existing data;
 6. starts Vite on `http://127.0.0.1:5173`.
 
-`npm run example:set:counter:publish` performs the same build/generate/typecheck/publish steps without
-starting Vite. Use `npm run example:set:counter:publish-clean` only when you deliberately want to
-reset the scratch database with `--delete-data=always`.
+`npm run example:react-counter:publish` performs the same build/generate/typecheck/publish steps
+without starting Vite. Use `npm run example:react-counter:publish-clean` only when you deliberately
+want to reset the scratch database with `--delete-data=always`.
 
 The module subproject also exposes a non-destructive `publish` script and a separate `publish:clean`
-script; run them with `npm --prefix examples/sets/counter-with-frontend/spacetimedb run <script>`.
+script; run them with `npm --prefix examples/react-counter/spacetimedb run <script>`.
 
 After the first publish, you can start only the web app with:
 
 ```bash
-npm --prefix examples/sets/counter-with-frontend/web run dev
+npm --prefix examples/react-counter/web run dev
 ```
 
 Environment overrides for the web app: `VITE_STDB_URI` (default `ws://localhost:3000`) and
@@ -57,7 +57,7 @@ No server or database is needed for the unit tests; the committed generated bind
 type imports:
 
 ```bash
-npm run example:set:counter:test
+npm run example:react-counter:test
 ```
 
 The root script builds `stdb-es`, then runs two Vitest projects:
@@ -81,7 +81,7 @@ The example also ships a Node-only integration suite at `integration/`. It uses
 the real command and read paths:
 
 ```bash
-npm run example:set:counter:test:integration
+npm run example:react-counter:test:integration
 ```
 
 The suite covers:
@@ -125,7 +125,7 @@ root also runs `npm run smoke:integration`, a broader dogfood of the same kit.
 ## Layout
 
 ```text
-counter-with-frontend/
+react-counter/
   integration/
     counter.integration.test.ts       # createIntegrationEnv: publish, command, SQL, subscriptions
     vitest.config.ts                  # Node-only integration project

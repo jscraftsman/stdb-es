@@ -29,8 +29,8 @@ explain the individual pieces in more depth.
 This section is a standalone walkthrough. It assumes `stdb-es` is already published on npm, so the
 project installs it like any other dependency — there are no `file:` links and no checkout of this
 repository. The result is the same shape as
-[`examples/sets/counter-with-frontend`](../examples/sets/counter-with-frontend/README.md): one
-SpacetimeDB TypeScript module, one generated client, and one small React screen.
+[`examples/react-counter`](../examples/react-counter/README.md): one SpacetimeDB TypeScript module,
+one generated client, and one small React screen.
 
 ### 0.1 Prerequisites
 
@@ -1963,16 +1963,16 @@ try {
 The [Integration testing guide](integration%20testing.md#2-one-test-local-server) covers the full
 lifecycle, external servers, subscription clients, anonymous views, and troubleshooting. The
 repository also dogfoods the kit with `npm run smoke:integration` and the consumer-style
-`npm run example:set:counter:test:integration` suite; both run in the CI gate.
+`npm run example:react-counter:test:integration` suite; both run in the CI gate.
 
 ---
 
 ## Part 4 — Simple React frontend
 
 A runnable version of this part lives in
-[`examples/sets/counter-with-frontend`](../examples/sets/counter-with-frontend/README.md). Run
-`npm run example:set:counter:start` from the repository root to publish the module and open it with
-Vite.
+[`examples/react-counter`](../examples/react-counter/README.md). Run
+`npm run example:react-counter:start` from the repository root to publish the module and open it
+with Vite.
 
 ### 4.1 Setup
 

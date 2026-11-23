@@ -941,7 +941,7 @@ fixture's `increment(counterId, commandId, by)` reducer; the counter example set
   stale-version rejection end to end.
 - Status: shipped. `src/testing/integration/` is the consumer tool; `scripts/integration-kit-smoke.mjs`
   dogfoods local and external URL modes, and `test/integration-kit.test.ts` covers the pure helpers
-  offline. `examples/sets/counter-with-frontend/integration/` is the consumer-style showcase suite.
+  offline. `examples/react-counter/integration/` is the consumer-style showcase suite.
   The guide lives in `docs/integration testing.md`. The `scripts/smoke-example.mjs` remains the
   library-specific full recovery smoke and now targets the counter set.
 
@@ -996,17 +996,17 @@ UI**. These sets deliberately start at intermediate concepts. Keep each set smal
 streams per domain, one state table, one read model, one screen, one contract test file. Do not
 re-teach basic append/read mechanics in every set.
 
-> **Example layout convention (approved; cleanup tracked below).** Going forward, every runnable
+> **Example layout convention (approved; cleanup complete below).** Going forward, every runnable
 > example set is a single top-level directory under `examples/`, named for the stack and concept it
 > demonstrates (for example, `examples/react-counter`). There is no `sets/` tier. A set owns its
 > `spacetimedb/`, `web/`, `integration/`, and README together. The standalone `examples/counter`
 > warm-up was removed in cleanup step 2; the `examples/sets/` tier was retired in step 3. M9–M13, when
 > resumed, follow the same top-level convention.
 
-The baseline set `examples/sets/counter-with-frontend` is implemented. Since M15 it demonstrates the
+The baseline set `examples/react-counter` is implemented. Since M15 it demonstrates the
 full loop — app-owned constants, `streamId`, client event registry, backend-owned command reducers,
 state cache with replay-on-miss, anonymous view subscription, and a one-screen React UI — with
-`npm run example:set:counter:start`. It does not replace any of the concept-focused sets below.
+`npm run example:react-counter:start`. It does not replace any of the concept-focused sets below.
 
 | # | Example set | Concept focus | Module app code | Simple React UI | Explicitly out of scope |
 | --- | --- | --- | --- | --- | --- |
@@ -1028,17 +1028,17 @@ Each example milestone exits only when all of the following are true:
 The implementation of M9–M13 remains **paused pending an explicit go signal**. Only their scope is
 recorded here; the implemented full-stack baseline does not start that sequence.
 
-#### Example layout cleanup (recorded; steps 1–3 applied)
+#### Example layout cleanup (complete)
 
 The convention was recorded before the filesystem changes so later phases have a stable target.
-Each step starts only on an explicit go signal; old paths remain valid until their step is applied.
+Each step started only on an explicit go signal; old paths remained valid until their step was applied.
 
 | Step | Change | Notes |
 | --- | --- | --- |
 | 1 — done | Record the convention in this section and the README | Applied before any filesystem changes. |
 | 2 — done | Remove `examples/counter` | Deleted the module-only warm-up and retargeted its active docs/scripts to the baseline set. Historical milestone rows keep their wording. |
-| 3 — done | Move `examples/sets/counter-with-frontend` to `examples/react-counter` | Applied: npm workspaces, root scripts, subproject `file:` links, README relative links, and lockfile paths updated. Active prose docs still use the old path and move in step 4. |
-| 4 | Update active docs to the new path | Replace references to the old set path with `examples/react-counter`; keep historical plan entries marked as history. |
+| 3 — done | Move `examples/sets/counter-with-frontend` to `examples/react-counter` | Applied: npm workspaces, root scripts, subproject `file:` links, README relative links, and lockfile paths updated. |
+| 4 — done | Update active docs to the new path | Applied: active docs and the moved example README now use `examples/react-counter` and `example:react-counter:*`; historical plan entries keep their original paths under explicit history notes. |
 
 ### 15.3 Deferred
 
