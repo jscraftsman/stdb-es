@@ -990,6 +990,13 @@ UI**. The existing `examples/counter` remains the basic warm-up; these sets deli
 intermediate concepts. Keep each set small: one or two streams per domain, one state table, one read
 model, one screen, one contract test file. Do not re-teach basic append/read mechanics in every set.
 
+> **Example layout convention (approved; cleanup tracked below).** Going forward, every runnable
+> example set is a single top-level directory under `examples/`, named for the stack and concept it
+> demonstrates (for example, `examples/react-counter`). There is no `sets/` tier. A set owns its
+> `spacetimedb/`, `web/`, `integration/`, and README together. The standalone `examples/counter`
+> warm-up and the `examples/sets/` tier are pre-convention leftovers; the cleanup plan below records
+> their removal and move. M9–M13, when resumed, follow the same top-level convention.
+
 The baseline set `examples/sets/counter-with-frontend` is implemented. Since M15 it demonstrates the
 full loop — app-owned constants, `streamId`, client event registry, backend-owned command reducers,
 state cache with replay-on-miss, anonymous view subscription, and a one-screen React UI — with
@@ -1014,6 +1021,18 @@ Each example milestone exits only when all of the following are true:
 
 The implementation of M9–M13 remains **paused pending an explicit go signal**. Only their scope is
 recorded here; the implemented full-stack baseline does not start that sequence.
+
+#### Example layout cleanup (recorded; not yet applied)
+
+The convention above is recorded before the filesystem changes so later phases have a stable target.
+Each step starts only on an explicit go signal; old paths remain valid until their step is applied.
+
+| Step | Change | Notes |
+| --- | --- | --- |
+| 1 | Record the convention in this section and the README | Current tree is unchanged. |
+| 2 | Remove `examples/counter` | Delete the module-only warm-up and its active doc references. Historical milestone rows keep their wording. |
+| 3 | Move `examples/sets/counter-with-frontend` to `examples/react-counter` | Update npm workspaces, root scripts, and subproject references as part of the move so builds stay green. |
+| 4 | Update active docs to the new path | Replace references to the old set path with `examples/react-counter`; keep historical plan entries marked as history. |
 
 ### 15.3 Deferred
 

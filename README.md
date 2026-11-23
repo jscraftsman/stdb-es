@@ -773,6 +773,10 @@ CLI has skipped its own type check. `npm run example:typecheck` and
 `npm run example:set:counter:typecheck` run that check explicitly and are part of their respective
 build/publish/start scripts.
 
+Example sets use a top-level directory under `examples/` (for example, the planned
+`examples/react-counter`); there is no `sets/` tier. The current tree is being migrated under the
+tracked cleanup plan in [§15.2 of the design record](docs/event-sourcing-plan.md).
+
 It republishes `stdb-es-counter`, drives the generated command reducers, and asserts against
 `es_stream` plus the app-owned names in `TABLES_COUNTER.state` and `VIEWS_COUNTER.summary`
 (`counter_state` and `counter_summary`) — including deterministic event ids, an idempotent replay,
