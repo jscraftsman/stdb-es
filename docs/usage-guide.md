@@ -1203,7 +1203,7 @@ client write APIs.
 
 > Do not export a generic `append_events` reducer. A browser calling it could choose `streamId`,
 > `eventType`, and `data` for any stream. The generated bindings for `increment`, `decrement`, and
-> `reset` are the only browser write surface in the counter examples.
+> `reset` are the only browser write surface in the counter example set.
 
 ### 1.5 Optimistic concurrency and time travel (module only)
 

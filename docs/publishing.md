@@ -75,13 +75,13 @@ npm is at least `11.5.1` (required for trusted publishing), then runs:
 
 - branch, action, dist-tag, and optional version guards
 - `npm ci` from the committed lockfile
-- build, library typecheck, and both example typechecks
+- build, library typecheck, and the React counter typecheck (module and web)
 - offline unit tests
 - fresh-workspace `npm pack` install (`npm run check:pack`)
 - `npm pack --dry-run` to show the exact tarball contents
 - `npm publish --dry-run` or `npm publish` with `--access public` and the selected dist-tag
 
-The tarball contains `dist`, `README.md`, `LICENSE`, `docs`, and the counter-set README. It does not
+The tarball contains `dist`, `README.md`, `LICENSE`, `docs`, and the React counter README. It does not
 contain tests, fixtures, editor files, or example source code.
 
 ## If a publish fails

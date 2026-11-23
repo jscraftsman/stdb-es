@@ -244,8 +244,8 @@ This kit covers real-server lifecycle, network reducers, SQL, and subscriptions.
 
 - the offline [Unit testing guide](unit%20testing.md) for command reducers, aggregates, and fake commands;
 - the [Usage guide](usage-guide.md#36-integration-tests) for library-level smoke recipes;
-- the maintainer `npm run smoke` and `npm run smoke:integration` scripts, which dogfood this kit in
-  the repository CI gate;
+- the maintainer `npm run smoke:integration` script, which dogfoods this kit in the repository CI
+  gate, and the separate `npm run smoke` publish smoke that checks the React counter module directly;
 - the runnable counter example set, whose
   [`integration/`](../examples/react-counter/integration/counter.integration.test.ts)
   project shows a consumer using `createIntegrationEnv` with app-owned constants; run it with

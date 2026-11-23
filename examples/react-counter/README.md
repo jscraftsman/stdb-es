@@ -1,4 +1,4 @@
-# Counter with frontend
+# React counter
 
 A small full-stack example set: one SpacetimeDB module plus one React client using `stdb-es` for the
 event log, a state cache, a live anonymous read model, and backend-owned command writes.

@@ -21,7 +21,7 @@ a second database, a message broker, or a separate read-model store.
 - [Integration testing guide](docs/integration%20testing.md) — real-server lifecycle, subscriptions,
   anonymous views, and teardown.
 - [SQL recipes](docs/sql-recipes.md) — owner-only inspection and repair queries.
-- [Counter with frontend](examples/react-counter/README.md) — runnable full-stack set.
+- [React counter](examples/react-counter/README.md) — runnable full-stack set.
 - [Design record](docs/event-sourcing-plan.md) — decisions, rejected alternatives, and milestones.
 - [Publishing guide](docs/publishing.md) — manual npm release steps and GitHub Actions setup.
 
