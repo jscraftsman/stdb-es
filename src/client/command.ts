@@ -1,5 +1,5 @@
 /**
- * Browser-facing write boundary.
+ * Client-facing write boundary.
  *
  * The client sends intent only. It never builds an event envelope: no stream id,
  * stream type, event type, event id, payload or expected version is chosen here.
@@ -30,9 +30,13 @@ function defaultCommandId(): string {
   return globalThis.crypto.randomUUID();
 }
 
-/** Generates a fresh idempotency key for a command. */
-export function newCommandId(): string {
-  return defaultCommandId();
+/**
+ * Generates a fresh idempotency key for a command.
+ *
+ * Pass `newCommandId` for tests or runtimes without Web Crypto.
+ */
+export function newCommandId(options: CommandIdOptions = {}): string {
+  return (options.newCommandId ?? defaultCommandId)();
 }
 
 /**

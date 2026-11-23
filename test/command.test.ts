@@ -28,6 +28,10 @@ describe('newCommandId', () => {
   it('generates distinct idempotency keys', () => {
     expect(newCommandId()).not.toBe(newCommandId());
   });
+
+  it('uses an injected generator for non-Web-Crypto runtimes', () => {
+    expect(newCommandId({ newCommandId: () => 'cmd-injected' })).toBe('cmd-injected');
+  });
 });
 
 describe('withCommandId', () => {
