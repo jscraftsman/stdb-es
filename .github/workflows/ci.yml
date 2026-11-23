@@ -94,7 +94,7 @@ jobs:
         run: |
           npm run build
           npm run typecheck
-          npm run example:set:counter:typecheck
+          npm run example:react-counter:typecheck
 
       - name: Unit tests
         run: npm test
@@ -130,7 +130,7 @@ jobs:
         run: npm run smoke:integration
 
       - name: Counter example integration tests
-        run: npm run example:set:counter:test:integration
+        run: npm run example:react-counter:test:integration
 
       - name: Stop disposable local server
         if: always()

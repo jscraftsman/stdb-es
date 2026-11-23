@@ -72,7 +72,7 @@ The root script builds `stdb-es`, then runs two Vitest projects:
 Both projects load `spacetimedbModuleTestPlugin()` in their `vitest.config.ts`: the module needs it
 for the in-memory datastore, and the client keeps it so importing the `stdb-es/testing` barrel stays
 resolvable in Node. No running server is involved. See the
-[unit testing guide](../../../docs/unit%20testing.md) for the full API.
+[unit testing guide](../../docs/unit%20testing.md) for the full API.
 
 ## Test it against a server
 
@@ -97,7 +97,7 @@ The suite covers:
 No pre-running server is required: local mode spawns and owns `spacetime start --in-memory
 --non-interactive`. The suite is separate from the offline Vitest projects because it needs Node
 built-ins and a real server. See the
-[integration testing guide](../../../docs/integration%20testing.md) for the full API. The repository
+[integration testing guide](../../docs/integration%20testing.md) for the full API. The repository
 root also runs `npm run smoke:integration`, a broader dogfood of the same kit.
 
 ## What it demonstrates

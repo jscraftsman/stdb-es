@@ -116,7 +116,7 @@ jobs:
         run: |
           npm run build
           npm run typecheck
-          npm run example:set:counter:typecheck
+          npm run example:react-counter:typecheck
 
       - name: Unit tests
         run: npm test

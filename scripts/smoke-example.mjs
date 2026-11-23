@@ -2,7 +2,7 @@
 /**
  * Publish smoke test.
  *
- * Runs after `example:set:counter:publish-clean`, against the live local server. It proves
+ * Runs after `example:react-counter:publish-clean`, against the live local server. It proves
  * the things the unit tests cannot: the module publishes with command reducers,
  * private tables are readable by the database owner, ownership and idempotency
  * hold on the real server, and the anonymous view reflects the state cache for

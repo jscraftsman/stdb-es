@@ -11,7 +11,7 @@
     "publish:clean": "spacetime publish stdb-es-counter-with-frontend -s local -p . --delete-data=always -y"
   },
   "dependencies": {
-    "stdb-es": "file:../../../../"
+    "stdb-es": "file:../../../"
   },
   "devDependencies": {
     "spacetimedb": "2.15.0",

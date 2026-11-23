@@ -1000,7 +1000,7 @@ re-teach basic append/read mechanics in every set.
 > example set is a single top-level directory under `examples/`, named for the stack and concept it
 > demonstrates (for example, `examples/react-counter`). There is no `sets/` tier. A set owns its
 > `spacetimedb/`, `web/`, `integration/`, and README together. The standalone `examples/counter`
-> warm-up was removed in cleanup step 2; the `examples/sets/` tier moves in step 3. M9–M13, when
+> warm-up was removed in cleanup step 2; the `examples/sets/` tier was retired in step 3. M9–M13, when
 > resumed, follow the same top-level convention.
 
 The baseline set `examples/sets/counter-with-frontend` is implemented. Since M15 it demonstrates the
@@ -1028,7 +1028,7 @@ Each example milestone exits only when all of the following are true:
 The implementation of M9–M13 remains **paused pending an explicit go signal**. Only their scope is
 recorded here; the implemented full-stack baseline does not start that sequence.
 
-#### Example layout cleanup (recorded; steps 1–2 applied)
+#### Example layout cleanup (recorded; steps 1–3 applied)
 
 The convention was recorded before the filesystem changes so later phases have a stable target.
 Each step starts only on an explicit go signal; old paths remain valid until their step is applied.
@@ -1037,7 +1037,7 @@ Each step starts only on an explicit go signal; old paths remain valid until the
 | --- | --- | --- |
 | 1 — done | Record the convention in this section and the README | Applied before any filesystem changes. |
 | 2 — done | Remove `examples/counter` | Deleted the module-only warm-up and retargeted its active docs/scripts to the baseline set. Historical milestone rows keep their wording. |
-| 3 | Move `examples/sets/counter-with-frontend` to `examples/react-counter` | Update npm workspaces, root scripts, and subproject references as part of the move so builds stay green. |
+| 3 — done | Move `examples/sets/counter-with-frontend` to `examples/react-counter` | Applied: npm workspaces, root scripts, subproject `file:` links, README relative links, and lockfile paths updated. Active prose docs still use the old path and move in step 4. |
 | 4 | Update active docs to the new path | Replace references to the old set path with `examples/react-counter`; keep historical plan entries marked as history. |
 
 ### 15.3 Deferred
