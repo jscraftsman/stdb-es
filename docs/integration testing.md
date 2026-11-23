@@ -68,7 +68,7 @@ Each positional reducer argument is serialized as one CLI token. A command such 
 `increment(counter_id, command_id, by)` is therefore three tokens. The module, not the test, decides
 the stream id, event id, event type, payload, and expected version. Never call a generic
 `append_events` reducer from a browser-facing path; see the backend-owned command contract in the
-[event-sourcing plan](event-sourcing-plan.md#183-command-payload-contract).
+[M15 change record](spec-changes/frontend-write-boundary-commands-r9-m15.md#183-command-payload-contract).
 
 ## 3. Connecting to an external server
 

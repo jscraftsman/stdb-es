@@ -154,8 +154,8 @@ a generic append reducer: every reducer a client can call is part of the app's p
 
 A command reducer derives `AppendArgs` itself. The browser sends only the command payload, including
 `commandId`; the module derives the stream id, event ids, event types, payloads, and expected version.
-See [§18.3 of the design record](event-sourcing-plan.md#183-command-payload-contract) for the command
-contract.
+See [§18.3 of the M15 change record](spec-changes/frontend-write-boundary-commands-r9-m15.md#183-command-payload-contract)
+for the command contract.
 
 Append order and guarantees:
 

@@ -306,7 +306,7 @@ expect(timeout.calls[0]).toEqual(timeout.calls[1]);
 Queued replies are consumed in order; after the queue is empty the configured default applies.
 `clear()` clears recorded calls without clearing queued replies. No append fake is shipped; the
 browser has no append binding. See
-[§18 of the design record](event-sourcing-plan.md#18-frontend-write-boundary-commands-instead-of-append-r9--m15).
+[§18 of the M15 change record](spec-changes/frontend-write-boundary-commands-r9-m15.md#18-frontend-write-boundary-commands-instead-of-append-r9--m15).
 
 ---
 
