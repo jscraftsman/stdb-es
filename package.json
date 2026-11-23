@@ -81,11 +81,6 @@
     "spacetimedb": ">=2.15.0 <3",
     "vitest": ">=3 <4"
   },
-  "peerDependenciesMeta": {
-    "vitest": {
-      "optional": true
-    }
-  },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"

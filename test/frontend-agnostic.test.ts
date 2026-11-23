@@ -134,4 +134,14 @@ describe('frontend-framework neutrality', () => {
     expect(typeof client.createCommandClient).toBe('function');
     expect(typeof client.newCommandId).toBe('function');
   });
+
+  it('declares Vitest as a required peer for the unit kit', () => {
+    const manifest = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')) as {
+      peerDependencies?: Record<string, string>;
+      peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+    };
+
+    expect(manifest.peerDependencies?.vitest).toBe('>=3 <4');
+    expect(manifest.peerDependenciesMeta?.vitest?.optional).not.toBe(true);
+  });
 });
