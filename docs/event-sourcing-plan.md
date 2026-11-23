@@ -165,6 +165,9 @@ shows the additive case is safe; it is not part of the v1 API.
 > was retained through M15 as a deprecated migration aid and removed in the post-M15 unit-kit
 > cleanup; the entry below is historical.
 
+> Historical layout: this tree records the original plan, including `examples/counter` and the
+> `examples/sets/` tier. The module-only example was removed and the set layout migrated under §15.2.
+
 ```
 stdb-es/
   package.json            # exports ".", "./server", "./client", "./testing", "./testing/integration"
@@ -939,12 +942,12 @@ fixture's `increment(counterId, commandId, by)` reducer; the counter example set
 - Status: shipped. `src/testing/integration/` is the consumer tool; `scripts/integration-kit-smoke.mjs`
   dogfoods local and external URL modes, and `test/integration-kit.test.ts` covers the pure helpers
   offline. `examples/sets/counter-with-frontend/integration/` is the consumer-style showcase suite.
-  The guide lives in `docs/integration testing.md`. The older `scripts/smoke-example.mjs` remains the
-  library-specific full recovery smoke.
+  The guide lives in `docs/integration testing.md`. The `scripts/smoke-example.mjs` remains the
+  library-specific full recovery smoke and now targets the counter set.
 
 ### 14.4 Layer 4 — maintainer live smoke
 
-`npm run smoke` publishes the counter with `--delete-data`, sends command reducers, checks deterministic
+`npm run smoke` publishes the counter set with `--delete-data`, sends command reducers, checks deterministic
 event ids and idempotent replay, rejects a non-owner command, deletes a cache row to prove replay-based
 recovery, and queries the anonymous view. It runs against `spacetime start --in-memory`.
 
@@ -957,13 +960,16 @@ the consumer integration smoke (`npm run smoke:integration`) on disposable in-me
 The pack check verifies the published `exports` map and shipped declarations from module-like and
 web-like workspaces; it loads browser-safe entry points at runtime and typechecks `stdb-es/server`,
 which needs the SpacetimeDB host to execute. Workflow configuration is committed here; a GitHub
-Actions run has not yet been observed.
+Actions run has not yet been observed. The example typecheck refers to the counter set.
 
 ---
 
 ## 15. Milestones
 
 ### 15.1 Core, tooling, and documentation
+
+> Historical: milestone deliverables below keep their original wording. `examples/counter` was the
+> module-only warm-up at M0 and has since been removed under §15.2.
 
 | # | Deliverable | Exit criteria | Status |
 | --- | --- | --- | --- |
@@ -986,16 +992,16 @@ sequence.
 ### 15.2 Example sets (one implemented baseline; M9–M13 planned)
 
 Each set is one vertical slice: **publishable module app code + a simple React client with a basic
-UI**. The existing `examples/counter` remains the basic warm-up; these sets deliberately start at
-intermediate concepts. Keep each set small: one or two streams per domain, one state table, one read
-model, one screen, one contract test file. Do not re-teach basic append/read mechanics in every set.
+UI**. These sets deliberately start at intermediate concepts. Keep each set small: one or two
+streams per domain, one state table, one read model, one screen, one contract test file. Do not
+re-teach basic append/read mechanics in every set.
 
 > **Example layout convention (approved; cleanup tracked below).** Going forward, every runnable
 > example set is a single top-level directory under `examples/`, named for the stack and concept it
 > demonstrates (for example, `examples/react-counter`). There is no `sets/` tier. A set owns its
 > `spacetimedb/`, `web/`, `integration/`, and README together. The standalone `examples/counter`
-> warm-up and the `examples/sets/` tier are pre-convention leftovers; the cleanup plan below records
-> their removal and move. M9–M13, when resumed, follow the same top-level convention.
+> warm-up was removed in cleanup step 2; the `examples/sets/` tier moves in step 3. M9–M13, when
+> resumed, follow the same top-level convention.
 
 The baseline set `examples/sets/counter-with-frontend` is implemented. Since M15 it demonstrates the
 full loop — app-owned constants, `streamId`, client event registry, backend-owned command reducers,
@@ -1022,15 +1028,15 @@ Each example milestone exits only when all of the following are true:
 The implementation of M9–M13 remains **paused pending an explicit go signal**. Only their scope is
 recorded here; the implemented full-stack baseline does not start that sequence.
 
-#### Example layout cleanup (recorded; not yet applied)
+#### Example layout cleanup (recorded; steps 1–2 applied)
 
-The convention above is recorded before the filesystem changes so later phases have a stable target.
+The convention was recorded before the filesystem changes so later phases have a stable target.
 Each step starts only on an explicit go signal; old paths remain valid until their step is applied.
 
 | Step | Change | Notes |
 | --- | --- | --- |
-| 1 | Record the convention in this section and the README | Current tree is unchanged. |
-| 2 | Remove `examples/counter` | Delete the module-only warm-up and its active doc references. Historical milestone rows keep their wording. |
+| 1 — done | Record the convention in this section and the README | Applied before any filesystem changes. |
+| 2 — done | Remove `examples/counter` | Deleted the module-only warm-up and retargeted its active docs/scripts to the baseline set. Historical milestone rows keep their wording. |
 | 3 | Move `examples/sets/counter-with-frontend` to `examples/react-counter` | Update npm workspaces, root scripts, and subproject references as part of the move so builds stay green. |
 | 4 | Update active docs to the new path | Replace references to the old set path with `examples/react-counter`; keep historical plan entries marked as history. |
 
@@ -1164,6 +1170,9 @@ The browser never supplies `streamId`, `streamType`, `eventType`, `data`, `event
 
 ### 18.4 Counter example migration
 
+> Historical M15 record: paths below reflect the tree before the example-layout cleanup. Both counter
+> examples have since been consolidated into the baseline set (§15.2).
+
 Both `examples/counter` and `examples/sets/counter-with-frontend` migrate in Phase 5. The web app
 stops importing the generic append client and calls generated reducers with intent only:
 
@@ -1214,7 +1223,8 @@ Read-side helpers (`decode`, upcasters, `sliceRows`, subscriptions, views, `view
 ### 18.6 Phased rollout
 
 Each phase starts only after an explicit go signal and completes its own checks before the next is
-proposed. "If necessary" is decided at the start of that phase, not assumed.
+proposed. "If necessary" is decided at the start of that phase, not assumed. The status table and
+intermediate-state notes below are a historical record of M15; their example paths are not current.
 
 | Phase | Scope | Exit criteria | Status |
 | --- | --- | --- | --- |

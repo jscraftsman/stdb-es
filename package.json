@@ -33,7 +33,6 @@
     "LICENSE"
   ],
   "workspaces": [
-    "examples/*/spacetimedb",
     "examples/sets/*/spacetimedb",
     "examples/sets/*/web"
   ],
@@ -65,10 +64,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "example:build": "npm run build && npm run example:typecheck && spacetime build -p examples/counter/spacetimedb",
-    "example:typecheck": "tsc -p examples/counter/spacetimedb/tsconfig.json",
-    "example:publish": "npm run build && npm run example:typecheck && spacetime publish stdb-es-counter -s local -p examples/counter/spacetimedb",
-    "example:publish:fresh": "npm run build && npm run example:typecheck && spacetime publish stdb-es-counter -s local -p examples/counter/spacetimedb --delete-data=always -y",
     "example:set:counter:build": "npm run build && spacetime build -p examples/sets/counter-with-frontend/spacetimedb",
     "example:set:counter:generate": "spacetime generate --lang typescript --out-dir examples/sets/counter-with-frontend/web/src/generated --module-path examples/sets/counter-with-frontend/spacetimedb",
     "example:set:counter:typecheck": "tsc -p examples/sets/counter-with-frontend/spacetimedb/tsconfig.json --noEmit && tsc -p examples/sets/counter-with-frontend/web/tsconfig.json --noEmit",
@@ -77,7 +72,7 @@
     "example:set:counter:publish-clean": "npm run example:set:counter:build && npm run example:set:counter:generate && npm run example:set:counter:typecheck && spacetime publish stdb-es-counter-with-frontend -s local -p examples/sets/counter-with-frontend/spacetimedb --delete-data=always -y",
     "example:set:counter:publish": "npm run example:set:counter:build && npm run example:set:counter:generate && npm run example:set:counter:typecheck && spacetime publish stdb-es-counter-with-frontend -s local -p examples/sets/counter-with-frontend/spacetimedb",
     "example:set:counter:start": "npm run example:set:counter:publish && npm --prefix examples/sets/counter-with-frontend/web run dev",
-    "smoke": "npm run example:publish:fresh && node scripts/smoke-example.mjs",
+    "smoke": "npm run example:set:counter:publish-clean && node scripts/smoke-example.mjs",
     "smoke:integration": "npm run build && node scripts/integration-kit-smoke.mjs",
     "check:pack": "node scripts/pack-install-check.mjs",
     "prepublishOnly": "npm run clean && npm run build && npm run typecheck && npm test && npm run check:pack"

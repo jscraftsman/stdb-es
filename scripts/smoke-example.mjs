@@ -2,7 +2,7 @@
 /**
  * Publish smoke test.
  *
- * Runs after `example:publish:fresh`, against the live local server. It proves
+ * Runs after `example:set:counter:publish-clean`, against the live local server. It proves
  * the things the unit tests cannot: the module publishes with command reducers,
  * private tables are readable by the database owner, ownership and idempotency
  * hold on the real server, and the anonymous view reflects the state cache for
@@ -11,12 +11,12 @@
  *   npm run smoke
  *
  * Override with STDB_SERVER (default `local`) and STDB_DATABASE
- * (default `stdb-es-counter`).
+ * (default `stdb-es-counter-with-frontend`).
  */
 import { execFileSync } from 'node:child_process';
 
 const SERVER = process.env.STDB_SERVER ?? 'local';
-const DATABASE = process.env.STDB_DATABASE ?? 'stdb-es-counter';
+const DATABASE = process.env.STDB_DATABASE ?? 'stdb-es-counter-with-frontend';
 const COUNTER_ID = 'smoke-counter';
 const STREAM_ID = `counter-${COUNTER_ID}`;
 

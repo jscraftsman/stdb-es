@@ -15,17 +15,17 @@ Nothing here is a write path.
 
 ```bash
 # Owner identity: private tables are visible.
-spacetime sql stdb-es-counter -s local "SELECT stream_id, version FROM es_stream"
+spacetime sql stdb-es-counter-with-frontend -s local "SELECT stream_id, version FROM es_stream"
 
 # Machine-readable: array of statements, each with schema.elements[].name.some and rows[][]
-spacetime sql stdb-es-counter -s local --format json "SELECT stream_id, version FROM es_stream"
+spacetime sql stdb-es-counter-with-frontend -s local --format json "SELECT stream_id, version FROM es_stream"
 
 # Anonymous identity: public views only, never es_* tables.
-spacetime sql stdb-es-counter -s local --anonymous "SELECT * FROM counter_summary"
+spacetime sql stdb-es-counter-with-frontend -s local --anonymous "SELECT * FROM counter_summary"
 ```
 
 `-s` must come before the query. For reducers the same is true, and `-s` must also come before
-`--`: `spacetime call stdb-es-counter increment -s local -- '1' 1 'cmd-1'`. The counter example's
+`--`: `spacetime call stdb-es-counter-with-frontend increment -s local -- '1' 1 'cmd-1'`. The counter set's
 command reducer takes `counterId`, `by`, then `commandId` in that order.
 
 ## What server-side SQL supports
@@ -190,7 +190,7 @@ If versions have a gap or `es_head.position` is behind the log, stop writing and
 ### Read a public view as an anonymous client
 
 ```bash
-spacetime sql stdb-es-counter -s local --anonymous \
+spacetime sql stdb-es-counter-with-frontend -s local --anonymous \
   "SELECT * FROM counter_summary WHERE stream_id = 'counter-1'"
 ```
 

@@ -1728,7 +1728,7 @@ The sections below keep the app-walkthrough examples in context.
 | Core package tests | offline | `npm test` | Library maintainers verify every shipped export |
 | Consumer module/client unit tests | offline | `stdb-es/testing` + Vitest | App code verifies command reducers, cache, projections, views, and command dispatch without a server |
 | Consumer integration tests | real server | `stdb-es/testing/integration` | App code verifies publish, concurrency, subscriptions, and anonymous access end to end |
-| Maintainer smoke | real server | `npm run smoke` | Publish the counter example and assert live behavior |
+| Maintainer smoke | real server | `npm run smoke` | Publish the counter set and assert live behavior |
 | Integration kit dogfood | real server | `npm run smoke:integration` | Verify the consumer kit's own lifecycle and CI path |
 
 ### 3.2 Core package tests
@@ -1933,7 +1933,7 @@ spacetime start --in-memory --non-interactive
 npm run smoke
 ```
 
-It publishes the counter example, sends commands, rejects repeat command ids without duplicating an
+It publishes the counter set, sends commands, rejects repeat command ids without duplicating an
 event, deletes a cache row and verifies replay-based recovery, and queries the anonymous view.
 
 For your own app, `stdb-es/testing/integration` ships the Node-only `createIntegrationEnv` kit. It
@@ -2001,7 +2001,7 @@ import { DbConnection } from '../generated/index.js';
 
 const connectionBuilder = DbConnection.builder()
   .withUri(import.meta.env.VITE_STDB_URI ?? 'ws://localhost:3000')
-  .withDatabaseName(import.meta.env.VITE_STDB_DATABASE ?? 'stdb-es-counter');
+  .withDatabaseName(import.meta.env.VITE_STDB_DATABASE ?? 'stdb-es-counter-with-frontend');
 
 export function AppProvider({ children }: { children: ReactNode }) {
   return <SpacetimeDBProvider connectionBuilder={connectionBuilder}>{children}</SpacetimeDBProvider>;

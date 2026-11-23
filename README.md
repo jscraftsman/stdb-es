@@ -747,7 +747,7 @@ npm install
 npm test              # offline suite, in-memory harness
 npm run build         # tsc -> dist (declarations included)
 npm run check:pack    # install a packed tarball in a fresh workspace app
-npm run smoke         # publish the example and run the live smoke test
+npm run smoke         # publish the counter set and run the live smoke test
 npm run smoke:integration # dogfood stdb-es/testing/integration on a disposable server
 npm run example:set:counter:test:integration # consumer-style integration tests for the example set
 ```
@@ -769,20 +769,20 @@ spacetime start --in-memory --non-interactive   # 127.0.0.1:3000
 
 `spacetime build` may print `tsc not found in node_modules` because npm workspaces hoist TypeScript
 to the repository root, so the CLI cannot find a per-module `tsc`. The build still succeeds, but the
-CLI has skipped its own type check. `npm run example:typecheck` and
-`npm run example:set:counter:typecheck` run that check explicitly and are part of their respective
-build/publish/start scripts.
+CLI has skipped its own type check. `npm run example:set:counter:typecheck` runs that check
+explicitly and is part of the set's build/publish/start scripts.
 
 Example sets use a top-level directory under `examples/` (for example, the planned
 `examples/react-counter`); there is no `sets/` tier. The current tree is being migrated under the
 tracked cleanup plan in [§15.2 of the design record](docs/event-sourcing-plan.md).
 
-It republishes `stdb-es-counter`, drives the generated command reducers, and asserts against
-`es_stream` plus the app-owned names in `TABLES_COUNTER.state` and `VIEWS_COUNTER.summary`
-(`counter_state` and `counter_summary`) — including deterministic event ids, an idempotent replay,
+The smoke republishes `stdb-es-counter-with-frontend`, drives the generated command reducers, and
+asserts against `es_stream` plus the app-owned names in `TABLES_COUNTER.state` and
+`VIEWS_COUNTER.summary` (`counter_state` and `counter_summary`) — including deterministic event ids, an
+idempotent replay,
 non-owner rejection, and a cache row that is deleted and then rebuilt by replay.
 
-The module-only example lives in `examples/counter`; the runnable full-stack set lives in
+The runnable full-stack set lives in
 [`examples/sets/counter-with-frontend`](examples/sets/counter-with-frontend/README.md). The design
 record, including the migration spike results and the rejected alternatives, is in
 [docs/event-sourcing-plan.md](docs/event-sourcing-plan.md).
