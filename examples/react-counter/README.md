@@ -10,6 +10,10 @@ The React-specific code is confined to the UI layer (`main.tsx`, `App.tsx`, `Cou
 `styles.css`). The module, generated bindings, command client, and test kits are framework-neutral; a
 Phaser or vanilla TypeScript client uses the same package API and supplies its own lifecycle wiring.
 
+The sibling [`phaser-counter`](../phaser-counter/README.md) runs this same module and command contract
+with a Phaser scene. It is the non-React lifecycle reference; neither example adds framework code to
+`stdb-es`.
+
 ## Prerequisites
 
 - Node.js 20+

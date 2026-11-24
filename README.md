@@ -15,14 +15,15 @@ a second database, a message broker, or a separate read-model store.
 ## Documentation
 
 - [Package Usage Guide](docs/usage-guide.md) — a from-scratch full-stack project, module code,
-  framework-neutral client code, testing, and a React reference frontend, including domain-separated
-  layouts.
+  framework-neutral client code, testing, and React/Phaser reference frontends, including
+  domain-separated layouts.
 - [API reference](docs/API.md) — every shipped export, its inputs, and its outputs.
 - [Unit testing guide](docs/unit%20testing.md) — offline module and client tests, fakes, and assertions.
 - [Integration testing guide](docs/integration%20testing.md) — real-server lifecycle, subscriptions,
   anonymous views, and teardown.
 - [SQL recipes](docs/sql-recipes.md) — owner-only inspection and repair queries.
 - [React counter](examples/react-counter/README.md) — runnable full-stack set.
+- [Phaser counter](examples/phaser-counter/README.md) — the same contract with a Phaser scene.
 - [Design record](docs/event-sourcing-plan.md) — decisions, rejected alternatives, and milestones.
 - [Publishing guide](docs/publishing.md) — manual npm release steps and GitHub Actions setup.
 
@@ -779,19 +780,22 @@ npm install
 npm test              # offline suite, in-memory harness
 npm run build         # tsc -> dist (declarations included)
 npm run check:pack    # install a packed tarball in a fresh workspace app
-npm run smoke         # publish the counter set and run the live smoke test
+npm run smoke         # publish the React counter set and run the live smoke test
 npm run smoke:integration # dogfood stdb-es/testing/integration on a disposable server
-npm run example:react-counter:test:integration # consumer-style integration tests for the example set
+npm run example:react-counter:test:integration # consumer-style integration tests for React
+npm run example:phaser-counter:test:integration # consumer-style integration tests for Phaser
 ```
 
-To run the full-stack set (React + module) against the already-running local server:
+To run a full-stack reference UI (React or Phaser + module) against the already-running local server:
 
 ```bash
-npm run example:react-counter:start   # publishes, generates bindings, starts Vite on :5173
+npm run example:react-counter:start  # publishes, generates bindings, starts Vite on :5173
+npm run example:phaser-counter:start # same contract, Phaser scene, Vite on :5174
 ```
 
-The full-stack publish preserves existing data. Use `npm run example:react-counter:publish-clean` only
-for a deliberate scratch reset with `--delete-data=always`.
+Each full-stack publish preserves existing data. Use the matching `publish-clean` script
+(`example:react-counter:publish-clean` or `example:phaser-counter:publish-clean`) only for a
+deliberate scratch reset with `--delete-data=always`.
 
 The smoke and full-stack commands assume a local server on `127.0.0.1:3000`:
 
@@ -801,11 +805,12 @@ spacetime start --in-memory --non-interactive   # 127.0.0.1:3000
 
 `spacetime build` may print `tsc not found in node_modules` because npm workspaces hoist TypeScript
 to the repository root, so the CLI cannot find a per-module `tsc`. The build still succeeds, but the
-CLI has skipped its own type check. `npm run example:react-counter:typecheck` runs that check
-explicitly and is part of the set's build/publish/start scripts.
+CLI has skipped its own type check. `npm run example:react-counter:typecheck` and
+`npm run example:phaser-counter:typecheck` run that check explicitly and are part of each set's
+build/publish/start scripts.
 
-Example sets use a top-level directory under `examples/`; the runnable set is
-`examples/react-counter`, and there is no `sets/` tier. The cleanup is complete and recorded in
+Example sets use a top-level directory under `examples/`; the runnable sets are `examples/react-counter`
+and `examples/phaser-counter`, and there is no `sets/` tier. The cleanup is complete and recorded in
 [§15.2 of the design record](docs/event-sourcing-plan.md).
 
 The smoke republishes `stdb-es-counter-with-frontend`, drives the generated command reducers, and
@@ -813,8 +818,10 @@ asserts against `es_stream` plus the app-owned names in `TABLES_COUNTER.state` a
 `VIEWS_COUNTER.summary` (`counter_state` and `counter_summary`) — including deterministic event ids,
 an idempotent replay, non-owner rejection, and a cache row that is deleted and then rebuilt by replay.
 
-The runnable full-stack set lives in
-[`examples/react-counter`](examples/react-counter/README.md). The design record, including the
+The runnable full-stack sets live in
+[`examples/react-counter`](examples/react-counter/README.md) and
+[`examples/phaser-counter`](examples/phaser-counter/README.md). They share the same module and
+`stdb-es` client contract; only the UI and lifecycle wiring differ. The design record, including the
 migration spike results and the rejected alternatives, is in
 [docs/event-sourcing-plan.md](docs/event-sourcing-plan.md).
 

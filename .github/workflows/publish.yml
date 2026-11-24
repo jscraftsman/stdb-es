@@ -117,6 +117,7 @@ jobs:
           npm run build
           npm run typecheck
           npm run example:react-counter:typecheck
+          npm run example:phaser-counter:typecheck
 
       - name: Unit tests
         run: npm test

@@ -1971,16 +1971,24 @@ try {
 The [Integration testing guide](integration%20testing.md#2-one-test-local-server) covers the full
 lifecycle, external servers, subscription clients, anonymous views, and troubleshooting. The
 repository also dogfoods the kit with `npm run smoke:integration` and the consumer-style
-`npm run example:react-counter:test:integration` suite; both run in the CI gate.
+`npm run example:react-counter:test:integration` and `npm run example:phaser-counter:test:integration`
+suites; all run in the CI gate.
 
 ---
 
 ## Part 4 — Simple React frontend
 
-A runnable version of this part lives in
+A runnable React version of this part lives in
 [`examples/react-counter`](../examples/react-counter/README.md). Run
 `npm run example:react-counter:start` from the repository root to publish the module and open it
 with Vite.
+
+The same module and `stdb-es` client API are used by
+[`examples/phaser-counter`](../examples/phaser-counter/README.md). Run
+`npm run example:phaser-counter:start` to open that Phaser reference on Vite port `5174`. Its
+`web/src/connection.ts` shows the non-React lifecycle: build the connection, start the subscription
+when connected, unsubscribe when it ends, remove row callbacks, then disconnect on scene shutdown or
+page unload.
 
 The `stdb-es` calls in this part are framework-neutral: only the provider, hooks, and components are
 React-specific. A Phaser scene or vanilla TypeScript app supplies the same generated reducer callbacks

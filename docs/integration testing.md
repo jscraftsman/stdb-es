@@ -247,9 +247,11 @@ This kit covers real-server lifecycle, network reducers, SQL, and subscriptions.
 - the [Usage guide](usage-guide.md#36-integration-tests) for library-level smoke recipes;
 - the maintainer `npm run smoke:integration` script, which dogfoods this kit in the repository CI
   gate, and the separate `npm run smoke` publish smoke that checks the React counter module directly;
-- the runnable counter example set, whose
-  [`integration/`](../examples/react-counter/integration/counter.integration.test.ts)
-  project shows a consumer using `createIntegrationEnv` with app-owned constants; run it with
-  `npm run example:react-counter:test:integration`.
+- the runnable counter examples, whose
+  [`react-counter/integration/`](../examples/react-counter/integration/counter.integration.test.ts)
+  and [`phaser-counter/integration/`](../examples/phaser-counter/integration/counter.integration.test.ts)
+  projects show consumers using `createIntegrationEnv` with app-owned constants; run them with
+  `npm run example:react-counter:test:integration` and
+  `npm run example:phaser-counter:test:integration`.
 
 M9–M13 example sets remain out of scope. This guide documents the shipped M7 tool only.

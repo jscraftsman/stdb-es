@@ -75,7 +75,7 @@ npm is at least `11.5.1` (required for trusted publishing), then runs:
 
 - branch, action, dist-tag, and optional version guards
 - `npm ci` from the committed lockfile
-- build, library typecheck, and the React counter typecheck (module and web)
+- build, library typecheck, and both React and Phaser counter typechecks (module and web)
 - offline unit tests
 - fresh-workspace `npm pack` install (`npm run check:pack`)
 - `npm pack --dry-run` to show the exact tarball contents
@@ -86,8 +86,8 @@ and that no React, Phaser, or other UI framework dependency was added to the pac
 suite includes frontend-neutrality guards, and `npm pack --dry-run` must show no framework runtime in
 the tarball.
 
-The tarball contains `dist`, `README.md`, `LICENSE`, `docs`, and the React counter README. It does not
-contain tests, fixtures, editor files, or example source code.
+The tarball contains `dist`, `README.md`, `LICENSE`, `docs`, and the React and Phaser counter READMEs.
+It does not contain tests, fixtures, editor files, or example source code.
 
 ## If a publish fails
 

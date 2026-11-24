@@ -14,8 +14,8 @@ Target: a TypeScript npm package for SpacetimeDB 2.15.x (CLI verified locally: `
 > records are readonly historical data and are not rewritten by later path or API cleanup.
 
 > **Active scope change:** [frontend-framework agnostic client contract](spec-changes/frontend-framework-agnostic-contract.md)
-> makes React and Phaser reference UIs rather than package APIs. Its documentation and Phaser example
-> phases are complete; the remaining example documentation and consistency review are in progress.
+> makes React and Phaser reference UIs rather than package APIs. Its documentation and both example
+> phases are complete; the final consistency review is in progress.
 
 > Spacetime is the whole backend: the module *is* the application server, reducers are the write
 > path, and views are the client read path. The package therefore ships **table definitions, pure
@@ -952,9 +952,10 @@ fixture's `increment(counterId, commandId, by)` reducer; the counter example set
   stale-version rejection end to end.
 - Status: shipped. `src/testing/integration/` is the consumer tool; `scripts/integration-kit-smoke.mjs`
   dogfoods local and external URL modes, and `test/integration-kit.test.ts` covers the pure helpers
-  offline. `examples/react-counter/integration/` is the consumer-style showcase suite.
-  The guide lives in `docs/integration testing.md`. The `scripts/smoke-example.mjs` remains the
-  library-specific full recovery smoke and now targets the counter set.
+  offline. `examples/react-counter/integration/` and `examples/phaser-counter/integration/` are the
+  consumer-style showcase suites. The guide lives in `docs/integration testing.md`. The
+  `scripts/smoke-example.mjs` remains the library-specific full recovery smoke and targets the React
+  counter database.
 
 ### 14.4 Layer 4 — maintainer live smoke
 
@@ -971,7 +972,8 @@ the consumer integration smoke (`npm run smoke:integration`) on disposable in-me
 The pack check verifies the published `exports` map and shipped declarations from module-like and
 framework-neutral workspaces; it loads `.` and `./client` at runtime and typechecks `stdb-es/server`,
 which needs the SpacetimeDB host to execute. Workflow configuration is committed here; a GitHub
-Actions run has not yet been observed. The example typecheck refers to the counter set.
+Actions run has not yet been observed. The example typechecks cover both the React and Phaser counter
+sets, and CI runs both consumer integration suites.
 
 ---
 
@@ -1000,10 +1002,9 @@ M6 comes before M7: the fakes define the seams the integration kit exercises. M1
 M9–M13: it changes the write contract for shipped pieces and does not start the paused example-set
 sequence.
 
-### 15.2 Example sets (one implemented baseline; M9–M13 planned)
+### 15.2 Example sets (implemented baselines; M9–M13 planned)
 
-Each set is one vertical slice: **publishable module app code + a simple React client with a basic
-UI**. These sets deliberately start at intermediate concepts. Keep each set small: one or two
+Each set is one vertical slice: **publishable module app code + a simple reference UI**. These sets deliberately start at intermediate concepts. Keep each set small: one or two
 streams per domain, one state table, one read model, one screen, one contract test file. Do not
 re-teach basic append/read mechanics in every set.
 
@@ -1017,7 +1018,10 @@ re-teach basic append/read mechanics in every set.
 The baseline set `examples/react-counter` is implemented. Since M15 it demonstrates the
 full loop — app-owned constants, `streamId`, client event registry, backend-owned command reducers,
 state cache with replay-on-miss, anonymous view subscription, and a one-screen React UI — with
-`npm run example:react-counter:start`. It does not replace any of the concept-focused sets below.
+`npm run example:react-counter:start`. The mirror set `examples/phaser-counter` uses the same module,
+bindings, command contract, and integration suite with a Phaser scene and explicit
+subscribe/unsubscribe/disconnect ownership; start it with `npm run example:phaser-counter:start`.
+Neither set replaces the concept-focused sets below.
 
 | # | Example set | Concept focus | Module app code | Simple React UI | Explicitly out of scope |
 | --- | --- | --- | --- | --- | --- |
@@ -1105,7 +1109,7 @@ Resolved in v1:
    connection lifecycle stays in examples and docs; see the
    [frontend-framework agnostic contract](spec-changes/frontend-framework-agnostic-contract.md).
 
-Still open: none at this time.
+Still open: the final consistency review for the frontend-framework-agnostic contract (Phase 8).
 
 **Implemented in M15 (§18):** the frontend append path is replaced by backend-owned command reducers.
 The browser sends an intent payload (command + idempotency key); the module decides stream id, event

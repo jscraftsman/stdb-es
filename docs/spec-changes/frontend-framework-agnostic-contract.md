@@ -34,12 +34,11 @@ React and Phaser are reference UIs, not part of the package contract.
 - [x] Phase 4 — `react-counter`: keep React as the reference UI with no API drift.
 - [x] Phase 5 — Docs: document the framework-neutral contract and lifecycle.
 - [x] Phase 6 — `phaser-counter`: add the Phaser example and root plumbing.
-- [ ] Phase 7 — Docs: document the new example.
+- [x] Phase 7 — Docs: document the new example.
 - [ ] Phase 8 — Review all docs and verification gates for consistency.
 
 ## Current state
 
-Phase 6 is complete. `examples/phaser-counter` mirrors the React example with a Phaser scene, an
-explicit connection lifecycle, the shared intent-only command wrapper, offline tests, and a Node-only
-integration suite. Root scripts, package metadata, and CI now include the Phaser example. Awaiting the
-go signal for Phase 7.
+Phase 7 is complete. The README, usage guide, publishing guide, integration testing guide, React
+example README, and active design-record entries now document both reference UIs, their scripts and
+ports, and the non-React lifecycle boundaries. Awaiting the go signal for Phase 8.
