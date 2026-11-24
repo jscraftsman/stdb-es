@@ -1,3 +1,17 @@
+## 0.4.3 (2026-11-24)
+
+### Refactor
+
+- **FrontendAgnostic**: Phase 8 - Fixed inconsistencies in all docs after applying the recent changes
+- **FrontendAgnostic**: Phase 7 - Update docs based on the recent changes in the examples
+- **FrontendAgnostic**: Phase 6 - Added a full stack example using Phaser based from the "react-counter" example
+- **FrontendAgnostic**: Phase 5 - Update all docs based on recent change about frontend agnostic requirements
+- **FrontendAgnostic**: Phase 4 - "react-counter" example: Keep React as the reference UI with no API drift
+- **FrontendAgnostic**: Phase 3 - Source-level note in integration testing kit. Added integration-kit boundary guards. Fixed guard's import parser
+- **FrontendAgnostic**: Phase 2 - Made Vitest a required dependency for the unit testing kit
+- **FrontendAgnostic**: Phase 1 - Added spec change plan, updated core API and added some initial tests
+- **Documentation**: Move out spec changes into a dedicated document
+
 ## 0.4.2 (2026-11-23)
 
 ### Refactor
