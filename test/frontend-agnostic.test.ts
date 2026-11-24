@@ -1,11 +1,13 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const srcRoot = join(repoRoot, 'src');
 const frontendEntries = [join(srcRoot, 'index.ts'), join(srcRoot, 'client', 'index.ts')];
+const integrationEntry = join(srcRoot, 'testing', 'integration', 'index.ts');
+const integrationDir = join(srcRoot, 'testing', 'integration');
 
 const forbiddenFrameworkModule =
   /^(react|react-dom|preact|vue|svelte|solid-js|phaser|spacetimedb\/react)(\/|$)|^@angular\//;
@@ -25,15 +27,19 @@ function sourceFilesIn(dir: string): string[] {
   return files;
 }
 
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+}
+
 function stripCommentsAndStrings(source: string): string {
-  return source
-    .replace(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`/g, "''")
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/[^\n]*/g, '');
+  return stripComments(source).replace(
+    /'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`/g,
+    "''",
+  );
 }
 
 function importSpecifiers(source: string): string[] {
-  const stripped = stripCommentsAndStrings(source);
+  const stripped = stripComments(source);
   return [...stripped.matchAll(/(?:\bfrom\s+|\bimport\s*)['"]([^'"]+)['"]/g)].map(
     (match) => match[1] as string,
   );
@@ -143,5 +149,42 @@ describe('frontend-framework neutrality', () => {
 
     expect(manifest.peerDependencies?.vitest).toBe('>=3 <4');
     expect(manifest.peerDependenciesMeta?.vitest?.optional).not.toBe(true);
+  });
+});
+
+describe('integration kit boundary', () => {
+  it('is not reachable from a frontend entry graph', () => {
+    const leaked = new Set<string>();
+    for (const entry of frontendEntries) {
+      const { files } = graphFrom(entry);
+      for (const file of files) {
+        if (file === integrationEntry || file.startsWith(`${integrationDir}${sep}`)) {
+          leaked.add(file);
+        }
+      }
+    }
+
+    expect([...leaked].map((file) => relative(repoRoot, file))).toEqual([]);
+  });
+
+  it('keeps Node/CLI modules inside the integration entry graph', () => {
+    const { files, modules } = graphFrom(integrationEntry);
+    const nodeModules = [...modules].filter((specifier) => specifier.startsWith('node:'));
+
+    expect(nodeModules.length).toBeGreaterThan(0);
+    expect([...files].map((file) => relative(repoRoot, file))).toContain(
+      join('src', 'testing', 'integration', 'env.ts'),
+    );
+  });
+
+  it('keeps browser globals out of the integration entry graph', () => {
+    const problems: string[] = [];
+    const { files } = graphFrom(integrationEntry);
+    for (const file of files) {
+      const code = stripCommentsAndStrings(readFileSync(file, 'utf8'));
+      if (forbiddenBrowserGlobal.test(code)) problems.push(relative(repoRoot, file));
+    }
+
+    expect(problems).toEqual([]);
   });
 });
