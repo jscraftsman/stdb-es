@@ -1,8 +1,9 @@
 # Package Usage Guide
 
 This guide shows how to use `stdb-es` from **SpacetimeDB module app code**, from ordinary **client
-code**, in **unit/integration tests**, and in a **simple React frontend**. It describes shipped v1
-behavior. Anything marked **planned** is a milestone in
+code**, in **unit/integration tests**, and from a **framework-neutral frontend**. React is the
+reference UI; the same package API applies to Phaser, vanilla TypeScript, and other generated-binding
+clients. It describes shipped v1 behavior. Anything marked **planned** is a milestone in
 [the design record](event-sourcing-plan.md#15-milestones) and is not available yet.
 
 For the complete signature of every export, see [API.md](API.md). For owner-only SQL inspection, see
@@ -12,12 +13,13 @@ For the complete signature of every export, see [API.md](API.md). For owner-only
 | --- | --- | --- |
 | `stdb-es` | module or client | Error codes, the `streamId` helper, and wire/protocol types |
 | `stdb-es/server` | module only | Tables, append/read helpers, repositories, projections, view factories, doctor helpers |
-| `stdb-es/client` | browser or Node client | Command dispatch, read-side event registry/codecs, subscription query helpers, subscription bridge |
-| `stdb-es/testing` | Vitest tests | Harness shim, wire fixtures, command fakes, contract suite |
-| `stdb-es/testing/integration` | Node tests only | Disposable server lifecycle, CLI calls, SQL, subscriptions |
+| `stdb-es/client` | any TypeScript frontend or Node SDK client | Command dispatch, read-side event registry/codecs, subscription query helpers, subscription bridge |
+| `stdb-es/testing` | Vitest unit tests | Harness shim, wire fixtures, command fakes, contract suite |
+| `stdb-es/testing/integration` | Node/CLI tests only | Disposable server lifecycle, CLI calls, SQL, subscriptions |
 
-> Never import `stdb-es/server` into browser code. Never import Node-only test tooling into a module
-> bundle. The client entry is browser-safe; the integration kit has its own Node-only entry.
+> Never import `stdb-es/server` into frontend code. Never import Node-only test tooling into a module
+> bundle or frontend app. `.` and `./client` are framework-neutral; `stdb-es/testing/integration` is a
+> separate Node/CLI-only entry.
 
 New to the package? Start with **Part 0** below for a complete from-scratch project. Parts 1–4 then
 explain the individual pieces in more depth.
@@ -30,7 +32,7 @@ This section is a standalone walkthrough. It assumes `stdb-es` is already publis
 project installs it like any other dependency — there are no `file:` links and no checkout of this
 repository. The result is the same shape as
 [`examples/react-counter`](../examples/react-counter/README.md): one SpacetimeDB TypeScript module,
-one generated client, and one small React screen.
+one generated client, and one small reference UI screen.
 
 ### 0.1 Prerequisites
 
@@ -46,7 +48,7 @@ spacetime server ping local
 spacetime server add local --url http://localhost:3000   # only if the nickname is missing
 ```
 
-The browser connects over WebSocket to `ws://localhost:3000`; the CLI uses HTTP on port `3000`.
+The client connects over WebSocket to `ws://localhost:3000`; the CLI uses HTTP on port `3000`.
 
 ### 0.2 Scaffold the project
 
@@ -454,7 +456,7 @@ function appendCommand(
     {
       streamId: stream,
       streamType: STREAM_TYPES_COUNTER.Counter,
-      // The module chooses the version; the browser never sends one.
+      // The module chooses the version; the client never sends one.
       expectedVersion: streamVersion(ctx, stream),
       events: [
         {
@@ -494,7 +496,7 @@ export const reset = spacetimedb.reducer(
 );
 ```
 
-These command reducers are the only client-callable writes. The browser sends `counterId`, an optional
+These command reducers are the only client-callable writes. The client sends `counterId`, an optional
 `by`, and `commandId`; the module derives the stream id, event type, deterministic event id, payload,
 and expected version. The first caller owns the counter. The hook runs in the same transaction as the
 append, and deduplicated retries skip it. A missing cache row triggers a replay instead of assuming a
@@ -933,7 +935,7 @@ After a successful command, the read model returns a row like:
 ```
 
 The columns are `stream_id`, `version`, and `value`. `es_stream`, `es_event`, and `es_head` are
-private and are not available to the browser.
+private and are not available to clients.
 
 If you need a clean scratch database:
 
@@ -1197,13 +1199,13 @@ counter reducer with ownership and deterministic event ids.
 `makeRepository(...).save(...)` is also a **module-only** seam: a command reducer may use it instead of
 calling `appendToStream` directly. It appends with the expected version, folds new rows into the
 loaded aggregate, and writes the cache in one transaction. Pass `eventIds` derived from the command's
-`commandId` so a retried command replays the same batch. Browser code never calls it. The same rule
+`commandId` so a retried command replays the same batch. Client code never calls it. The same rule
 applies to `ids`, `wireEvents`, and `expectAppendError`: they are fixtures for server-side tests, not
 client write APIs.
 
-> Do not export a generic `append_events` reducer. A browser calling it could choose `streamId`,
+> Do not export a generic `append_events` reducer. A client calling it could choose `streamId`,
 > `eventType`, and `data` for any stream. The generated bindings for `increment`, `decrement`, and
-> `reset` are the only browser write surface in the counter example set.
+> `reset` are the only client write surface in the counter example set.
 
 ### 1.5 Optimistic concurrency and time travel (module only)
 
@@ -1479,7 +1481,7 @@ or an `upgrade`.
 The package no longer exports `encodeEvents`; the registry is for **reading** stored rows. `decode`
 and `upgrade` are the fields the client uses. The `encode` field remains in `EventDefinition` for
 app-owned codecs, and it is separate from the server-side `RepositoryOptions.encode` used when a
-module command calls `repository.save(...)`. Browser writes use generated command payload types.
+module command calls `repository.save(...)`. Client writes use generated command payload types.
 
 ### 2.2 Command client
 
@@ -1614,8 +1616,9 @@ const subscription = subscribeEventRows({
   },
 });
 
-// Later, when the screen unmounts:
+// When the screen/scene ends:
 subscription.unsubscribe();
+// At application shutdown: connection.disconnect();
 ```
 
 `query` also accepts `{ table }` or `{ query: '<sql>' }`, so the builders above can be passed through
@@ -1676,7 +1679,7 @@ export const placeOrder = spacetimedb.reducer(
       expectedVersion: streamVersion(ctx, stream),
       events: [
         {
-          // Derived from the caller's idempotency key, not generated in the browser.
+          // Derived from the caller's idempotency key, not generated in client code.
           eventId: `placed-${command.commandId}`,
           eventType: EVENT_TYPES_ORDER.Placed,
           data: JSON.stringify({ kind: EVENT_TYPES_ORDER.Placed, orderId: stream }),
@@ -1699,7 +1702,7 @@ The helper:
 - throws an `Error` whose code is `ES_INVALID_BATCH`.
 
 It is **formatting and validation only**. It does not decide ownership or generate a business id for
-you. Browser code may format an id for reads; only the module may decide which id a command writes.
+you. Client code may format an id for reads; only the module may decide which id a command writes.
 
 #### Who derives the stream id?
 
@@ -1707,7 +1710,7 @@ you. Browser code may format an id for reads; only the module may decide which i
 | --- | --- | --- |
 | **Module** | The id comes from `ctx.sender`, a server-side sequence, or other trusted domain rules | The client cannot know the id before the command; it discovers it through a view because reducers return `void` |
 | **Hybrid (recommended default)** | The client supplies a stable business or correlation id and the module derives or validates the stream id | Avoids client-chosen privileged ids while keeping retry correlation simple |
-| **Browser (read-only)** | The client already knows the business id and needs a view query or subscription key | Use `streamId` for the query only; never send the id as a write field |
+| **Client (read-only)** | The client already knows the business id and needs a view query or subscription key | Use `streamId` for the query only; never send the id as a write field |
 
 Use the same `STREAM_PREFIXES_*` value on both sides so read queries and derived write ids agree.
 Event ids are a separate concern: command reducers derive them from `commandId` and pass them to
@@ -1720,6 +1723,11 @@ code should rely on generated ids.
 
 The complete standalone reference for this layer is the [Unit testing guide](unit%20testing.md).
 The sections below keep the app-walkthrough examples in context.
+
+Vitest `>=3 <4` is a required peer dependency; install it as a dev dependency in every workspace that
+uses `stdb-es/testing`. Only the contract suite imports it at runtime, so the same command fakes and
+module harness work in React, Phaser, vanilla TypeScript, and Node test projects. The integration kit
+runs in Node/CLI processes only and is never imported by frontend code.
 
 ### 3.1 Test layers
 
@@ -1789,7 +1797,7 @@ it('derives one event from an increment command', () => {
 
 Calling the same command again with `commandId: 'cmd-1'` is how you test idempotent replay. For
 server-side fixtures that append through a test seam, `wireEvents(prefix, pairs)` produces
-deterministic ids `${prefix}-1`, `${prefix}-2`, and so on; it is not a browser write API.
+deterministic ids `${prefix}-1`, `${prefix}-2`, and so on; it is not a client write API.
 
 ### 3.4 Contract tests for app code
 
@@ -1835,7 +1843,7 @@ runEventStoreContractTests({
   name: 'Counter contract',
   spacetimedb,
   moduleExports: { increment },
-  // Server-only seam for seeding store invariants. Not a browser API.
+  // Server-only seam for seeding store invariants. Not a client API.
   append: (ctx, args) => appendToStream(ctx, args),
   streamId: () => contractStreamId,
   streams: [
@@ -1859,7 +1867,7 @@ runEventStoreContractTests({
       },
     },
   ],
-  // Exercises the browser-facing boundary through the real command reducer.
+  // Exercises the client-facing boundary through the real command reducer.
   commands: {
     name: 'increment',
     command: (_id, commandId) => ({ counterId, by: 1, commandId }),
@@ -1881,7 +1889,7 @@ runEventStoreContractTests({
 The contract suite checks append/read ordering, gapless positions, stale-version rejection,
 idempotent replay, cache/replay agreement, structural integrity, time travel, same-version drift
 repair, projection rebuild parity, and view output. With `commands` set it also checks the
-browser-facing boundary: one append per `commandId`, replay on a repeated key, and rejection for a
+client-facing boundary: one append per `commandId`, replay on a repeated key, and rejection for a
 caller without an ownership row. Each case uses a fresh harness.
 
 ### 3.5 Client unit tests without a server
@@ -1919,7 +1927,7 @@ it('reuses the command envelope when a dispatch is retried', async () => {
 });
 ```
 
-No append fake is shipped; the browser has no append binding. For server-side fixture seams, use
+No append fake is shipped; clients have no append binding. For server-side fixture seams, use
 `wireEvents`/`ids` with `appendToStream` instead. See the
 [Unit testing guide](unit%20testing.md#5-client-tests-with-a-fake-command) for queued errors and
 rejections, and [the API reference](API.md#41-module-and-client-helpers) for exact signatures.
@@ -1973,6 +1981,18 @@ A runnable version of this part lives in
 [`examples/react-counter`](../examples/react-counter/README.md). Run
 `npm run example:react-counter:start` from the repository root to publish the module and open it
 with Vite.
+
+The `stdb-es` calls in this part are framework-neutral: only the provider, hooks, and components are
+React-specific. A Phaser scene or vanilla TypeScript app supplies the same generated reducer callbacks
+to `createCommandClient` and the same connection to the subscription helpers. In every frontend:
+
+1. Create and own the generated `DbConnection` in framework/application setup.
+2. Register views with `subscribeEventRows` or `createStreamSubscription` and retain the handle.
+3. Call `unsubscribe()` (or `unsubscribeThen()`) when the screen or scene ends.
+4. Call `connection.disconnect()` at application shutdown, or let the SDK provider do it.
+
+Reconnect replay refreshes retained subscriptions; do not subscribe again on every reconnect. The
+React provider shown below owns connection creation and disconnection for you.
 
 ### 4.1 Setup
 
@@ -2088,7 +2108,10 @@ export function CounterPanel() {
   useEffect(() => {
     const connection = getConnection();
     if (!connection) return;
-    connection.subscribe([viewQuery(VIEWS_COUNTER.stream, [COUNTER_STREAM_ID])]);
+    const handle = connection.subscribe([
+      viewQuery(VIEWS_COUNTER.stream, [COUNTER_STREAM_ID]),
+    ]);
+    return () => handle.unsubscribe();
   }, [getConnection]);
 
   async function send<K extends keyof CounterCommands>(name: K, command: CounterCommands[K]) {
@@ -2138,7 +2161,8 @@ and `createdAtMicros`). Use it when you want the domain event rather than raw ro
   retry.
 - For eventual consistency, show a pending state until the expected version arrives; do not claim a
   global commit from a local click.
-- Keep one screen per set. Multi-domain sets use a shared provider and separate panels.
+- Keep one screen per set. Multi-domain sets use a shared connection (provider in React) and separate
+  panels.
 - Never subscribe to `es_event` directly. It is private; use an authorized view or a materialized read
   model.
 
@@ -2150,7 +2174,7 @@ and `createdAtMicros`). Use it when you want the domain event rather than raw ro
 - [ ] App-owned stream types, prefixes, event types, table names, view names, and stable row keys come
       from per-domain `constants.ts` files; no duplicated literals in registries, views, or fixtures.
 - [ ] Core tables remain private; no view exposes them without `authorize`.
-- [ ] The browser calls only public command reducers; no generic append binding is exported or used.
+- [ ] The client calls only public command reducers; no generic append binding is exported or used.
 - [ ] Every command carries `commandId`, and the module derives event ids deterministically from it.
 - [ ] Web code imports command payload types from `spacetime generate` output.
 - [ ] Every state cache table has a `version` column and a replay-on-miss path.

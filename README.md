@@ -14,8 +14,9 @@ a second database, a message broker, or a separate read-model store.
 
 ## Documentation
 
-- [Package Usage Guide](docs/usage-guide.md) — a from-scratch full-stack project, module code, client
-  code, testing, and a simple React frontend, including domain-separated layouts.
+- [Package Usage Guide](docs/usage-guide.md) — a from-scratch full-stack project, module code,
+  framework-neutral client code, testing, and a React reference frontend, including domain-separated
+  layouts.
 - [API reference](docs/API.md) — every shipped export, its inputs, and its outputs.
 - [Unit testing guide](docs/unit%20testing.md) — offline module and client tests, fakes, and assertions.
 - [Integration testing guide](docs/integration%20testing.md) — real-server lifecycle, subscriptions,
@@ -41,12 +42,12 @@ These are not conventions; the library and its tests are built around them.
    rebuilt from the log rather than treated as empty state.
 5. **Writes are commands, not event envelopes.** Public reducers accept a command payload plus a
    `commandId`. The module derives stream ids, event ids, event types, data, authorization, and
-   expected versions. Browser code never calls a generic append.
+   expected versions. Client code never calls a generic append.
 
 ## Glossary
 
 These are the terms used by the API and the guides. "Server" means SpacetimeDB module code;
-"client" means browser or other SDK code.
+"client" means application code outside the module: React, Phaser, vanilla TypeScript, or a Node SDK.
 
 | Term | Meaning in `stdb-es` |
 | --- | --- |
@@ -62,7 +63,7 @@ These are the terms used by the API and the guides. "Server" means SpacetimeDB m
 | **Payload / `data`** | The JSON-serializable body of an event, stored as canonical JSON in a string column. The server validates that it is JSON but does not interpret its shape. |
 | **Metadata** | Optional JSON-or-text context attached to an append or an individual event. The store carries it without interpreting it. |
 | **Version** | The 1-based position of an event inside one stream. The stream's current version is its concurrency token. |
-| **Expected version** | The version passed to the server-only `appendToStream`. A command reducer chooses it (often from `streamVersion`); browsers never send one. A mismatch throws `ES_EXPECTED_VERSION_MISMATCH`. |
+| **Expected version** | The version passed to the server-only `appendToStream`. A command reducer chooses it (often from `streamVersion`); clients never send one. A mismatch throws `ES_EXPECTED_VERSION_MISMATCH`. |
 | **Sentinel** | A special `expectedVersion` value: `ANY_VERSION` (-1) skips the check, `NO_STREAM` (0) requires a new stream, and `STREAM_EXISTS` (-2) requires an existing one. |
 | **Position** | A gapless, commit-ordered number assigned to every event across the whole database. It is the cursor for rebuilds, not a per-stream version. |
 | **Head** | The single counter that assigns positions. It lives in the private `es_head` table and is updated in the append transaction. |
@@ -81,10 +82,10 @@ These are the terms used by the API and the guides. "Server" means SpacetimeDB m
 | **Read model** | Client-visible query output: an app-owned view over events/cache tables, or a materialized table maintained by a projection. |
 | **Subscription** | A client query whose results are pushed as rows change. `viewQuery()` and `tableQuery()` build the SQL strings used by SpacetimeDB subscriptions. |
 | **Upcast / `upgrade`** | Converting an old stored payload to the current shape before decoding. This is how schema evolution avoids rewriting the event log. |
-| **Registry** | The client-side map from event type strings to codecs (`encode`, `decode`, optional `upgrade`). It is the read/decode codec; browser writes use generated command payload types. |
+| **Registry** | The client-side map from event type strings to codecs (`encode`, `decode`, optional `upgrade`). It is the read/decode codec; client writes use generated command payload types. |
 | **Domain / bounded context** | A business boundary with its own event types, aggregates, caches, and views. In a multi-domain app, group code by domain and share ids, not event unions. |
 | **Cross-aggregate** | An operation that coordinates more than one aggregate stream. Model it with a process stream and deterministic commands, not a transaction spanning unrelated aggregates. |
-| **Optimistic concurrency** | The module appends with an expected version and fails loudly if another writer won. The browser sees the resulting state through a subscription; its retry key is `commandId`, not an event id or version. |
+| **Optimistic concurrency** | The module appends with an expected version and fails loudly if another writer won. The client sees the resulting state through a subscription; its retry key is `commandId`, not an event id or version. |
 | **Time travel** | Reading state or events as of a version or processing timestamp. Timestamp bounds intersect with version bounds; version is the authoritative order. |
 | **Command** | An intent payload sent to a public command reducer, always including `commandId`. It contains no stream id, event, or expected version. |
 | **Command reducer** | The server write path. It validates intent and `ctx.sender`, derives the stream and events, then appends them. Its generated binding is the client's only write surface. |
@@ -96,7 +97,35 @@ These are the terms used by the API and the guides. "Server" means SpacetimeDB m
 npm install stdb-es spacetimedb
 ```
 
-`vitest` is an optional peer dependency: only the `stdb-es/testing` entry point needs it.
+`vitest` (`>=3 <4`) is a required peer dependency because `stdb-es/testing` is built on it. Install
+it as a dev dependency in any workspace that uses the test kit. The `.` and `./client` entry points
+do not import Vitest.
+
+## Frontend compatibility
+
+`stdb-es` is framework-neutral. It ships no React hooks, providers, Phaser adapters, DOM helpers, or
+framework-specific entry points. The same `.` and `./client` APIs work from React, Phaser, vanilla
+TypeScript, and other generated-binding clients:
+
+- `createCommandClient` accepts generated reducer callbacks from hooks, scene services, or plain
+  async functions.
+- `createEventRegistry`, `decodeEvent`, and `sliceRows` decode and filter stored rows without a UI
+  framework.
+- `viewQuery`, `tableQuery`, `subscribeEventRows`, and `createStreamSubscription` accept SDK
+  connection objects structurally; generated code is not imported into the package.
+
+Your app owns the connection and lifecycle:
+
+1. **Connect** with your generated `DbConnection` using the framework's initialization hook.
+2. **Subscribe** through `subscribeEventRows` or `createStreamSubscription`; retain the returned handle.
+3. **Unsubscribe** with `unsubscribe()` (or `unsubscribeThen()`) when the screen, scene, or domain
+   view ends. This removes only that query.
+4. **Disconnect** through the generated connection (`connection.disconnect()`) when the app shuts
+   down, or let the SDK provider do it. Closing a connection is separate from unsubscribing.
+
+Automatic reconnect replay refreshes retained queries; do not call `subscribe()` again merely because
+the connection reconnected. `stdb-es/testing/integration` is Node/CLI-only and must never be imported
+from frontend code.
 
 ## Quick start
 
@@ -297,7 +326,7 @@ function appendCommand(
     {
       streamId: stream,
       streamType: STREAM_TYPES_COUNTER.Counter,
-      // The module chooses the version; the browser never sends one.
+      // The module chooses the version; the client never sends one.
       expectedVersion: streamVersion(ctx, stream),
       events: [
         {
@@ -337,7 +366,7 @@ export const reset = spacetimedb.reducer(
 );
 ```
 
-These are the only public write callables. The browser sends `counterId`, an optional `by`, and
+These are the only public write callables. The client sends `counterId`, an optional `by`, and
 `commandId`; the module derives the stream id, event id, event type, payload, and expected version. The
 first caller owns a counter, and a different `ctx.sender` is rejected before any append. Reducers
 return nothing; clients observe the new state through their subscription or a view.
@@ -368,7 +397,7 @@ const calls: CommandCalls<CounterCommands> = {
 
 const commands = createCommandClient(calls);
 
-// The browser sends intent only: no stream id, event, or expected version.
+// The client sends intent only: no stream id, event, or expected version.
 const sent = await commands.sendNew('increment', { counterId: '1', by: 5 });
 
 // Persist the envelope before dispatch when a timeout is possible. Replaying it
@@ -376,8 +405,10 @@ const sent = await commands.sendNew('increment', { counterId: '1', by: 5 });
 await commands.send('increment', sent);
 ```
 
-In React, the bindings in `calls` are the hooks returned by `useSpacetimeReducer`; wrap them with
-`createCommandClient` once and call `sendNew` from event handlers. The registry described below is the
+The bindings in `calls` can be React hooks returned by `useSpacetimeReducer`, callbacks owned by a
+Phaser scene, or plain async functions in vanilla TypeScript. Wrap them with `createCommandClient`
+once and call `sendNew` from your UI event handlers. Pass `{ newCommandId }` when a runtime lacks
+`crypto.randomUUID` or when tests need deterministic keys. The registry described below is the
 **read** codec for stored rows, not a write path.
 
 ### 3. Read model: a view the app owns
@@ -411,7 +442,8 @@ const subscription = subscribeEventRows({
   onError: (error) => console.error(error),
 });
 
-// Later: subscription.unsubscribe();
+// When the screen/scene ends: subscription.unsubscribe();
+// Later, when the app ends: connection.disconnect();
 ```
 
 ## API
@@ -642,7 +674,7 @@ const counterStreamId = streamId(STREAM_PREFIXES_COUNTER.counter, counterId);
 runEventStoreContractTests({
   spacetimedb,
   moduleExports: { increment },
-  // Server-only seam for seeding store invariants. The browser never sees it.
+  // Server-only seam for seeding store invariants. The client never sees it.
   append: (ctx, args) => appendToStream(ctx, args),
   streamId: () => counterStreamId,
   streams: [
@@ -665,7 +697,7 @@ runEventStoreContractTests({
       },
     },
   ],
-  // Exercises the browser-facing boundary through the real command reducer.
+  // Exercises the client-facing boundary through the real command reducer.
   commands: {
     name: 'increment',
     command: (_stream, commandId) => ({ counterId, by: 1, commandId }),

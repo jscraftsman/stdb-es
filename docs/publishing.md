@@ -81,6 +81,11 @@ npm is at least `11.5.1` (required for trusted publishing), then runs:
 - `npm pack --dry-run` to show the exact tarball contents
 - `npm publish --dry-run` or `npm publish` with `--access public` and the selected dist-tag
 
+Before release, confirm `package.json` still declares `spacetimedb` and `vitest` as **required** peers
+and that no React, Phaser, or other UI framework dependency was added to the package. The offline
+suite includes frontend-neutrality guards, and `npm pack --dry-run` must show no framework runtime in
+the tarball.
+
 The tarball contains `dist`, `README.md`, `LICENSE`, `docs`, and the React counter README. It does not
 contain tests, fixtures, editor files, or example source code.
 

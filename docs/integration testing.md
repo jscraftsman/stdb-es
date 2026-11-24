@@ -4,8 +4,9 @@
 server. It creates a disposable database, publishes your module, calls reducers, runs owner and
 anonymous SQL, opens live subscriptions, and tears everything down in one lifecycle.
 
-It is **Node-only**. It is deliberately a separate export so `stdb-es/client` and `stdb-es/testing`
-remain browser-safe. For offline module/client tests, use the
+It is **Node/CLI-only**. It is deliberately a separate export so `.` and `stdb-es/client` remain
+framework-neutral and free of Node-only modules. Frontend code uses the generated connection plus
+`stdb-es/client`; only the Node test process imports this kit. For offline module/client tests, use the
 [Unit testing guide](unit%20testing.md) instead.
 
 ## 1. Install and prerequisites
@@ -52,7 +53,7 @@ it('calls a command reducer and exposes the new state through the public view', 
 
   // App-specific setup: the caller owns this counter.
   await env.call('claim_counter', ['counter-1', 'claim-1']);
-  // The browser sends intent only; the module derives and appends the event.
+  // The client sends intent only; the module derives and appends the event.
   await env.call('increment', ['counter-1', 'it-1', 1]);
 
   const events = await env.sql('SELECT * FROM es_event');
@@ -67,7 +68,7 @@ it('calls a command reducer and exposes the new state through the public view', 
 Each positional reducer argument is serialized as one CLI token. A command such as
 `increment(counter_id, command_id, by)` is therefore three tokens. The module, not the test, decides
 the stream id, event id, event type, payload, and expected version. Never call a generic
-`append_events` reducer from a browser-facing path; see the backend-owned command contract in the
+`append_events` reducer from a client-facing path; see the backend-owned command contract in the
 [M15 change record](spec-changes/frontend-write-boundary-commands-r9-m15.md#183-command-payload-contract).
 
 ## 3. Connecting to an external server
@@ -165,7 +166,7 @@ await client.close();
 `client.rows(table)` returns a snapshot. Inserts, deletes, and row updates are applied as subscription
 updates arrive; always assert through `waitFor` rather than sleeping.
 
-For parameterized views, build the query with `viewQuery` and `sqlLiteral` from the browser-safe
+For parameterized views, build the query with `viewQuery` and `sqlLiteral` from the framework-neutral
 `stdb-es/client` entry:
 
 ```ts
@@ -236,7 +237,7 @@ attached database, pass `keepDatabase: false` explicitly.
 | Anonymous SQL cannot see a table | Private tables are owner-only. Query the app's public view with `{ anonymous: true }`. |
 | Repeating a command seems to do nothing | That is the intended idempotent replay: the module derives the event id from `commandId`. Use a fresh command id for a new intent. |
 | Tests leak state between cases | Create one environment per test and dispose it in `finally`/`afterEach`. |
-| Browser bundle fails to import the kit | Correct: import from `stdb-es/testing/integration` only in Node tests. Keep client code on `stdb-es/client`. |
+| Frontend bundle fails to import the kit | Correct: import from `stdb-es/testing/integration` only in Node tests. Keep client code on `stdb-es/client`. |
 
 ## 10. Boundary
 

@@ -13,6 +13,10 @@ Target: a TypeScript npm package for SpacetimeDB 2.15.x (CLI verified locally: `
 > [docs/spec-changes/](spec-changes/). Each record is labeled `completed` or `on-going`; completed
 > records are readonly historical data and are not rewritten by later path or API cleanup.
 
+> **Active scope change:** [frontend-framework agnostic client contract](spec-changes/frontend-framework-agnostic-contract.md)
+> makes React and Phaser reference UIs rather than package APIs. Its documentation phase is complete;
+> the Phaser example work remains in progress.
+
 > Spacetime is the whole backend: the module *is* the application server, reducers are the write
 > path, and views are the client read path. The package therefore ships **table definitions, pure
 > helper functions, adapter protocols, view factories and contract tests**. The application owns
@@ -52,6 +56,8 @@ change the design, so they are recorded here rather than quietly edited.
   and opt-in integration tests against a disposable real database.
 - Documented by a **Package Usage Guide** (module, client, testing, frontend) and a complete
   **API reference**, both written for app developers.
+- Framework-neutral client API: `.` and `./client` work from React, Phaser, vanilla TypeScript, and
+  other generated-binding clients; React is the reference UI, not a package dependency.
 - Publishable to npm, testable with the official module test harness.
 
 **Non-goals (v1)**
@@ -68,14 +74,14 @@ change the design, so they are recorded here rather than quietly edited.
 | ID | Requirement | Acceptance criteria |
 | --- | --- | --- |
 | **R1** | **Core package unit tests** | Every public export in `.`, `./server`, and `./client` has direct coverage; all ten workshop modules have a named test; the contract suite is dogfooded against the counter fixture; `npm test` is green with no live server. |
-| **R2** | **Consumer unit-test tools** | `stdb-es/testing` gives a consumer everything needed to test *their* module and client without a server: harness wrapper, wire fixtures, deterministic ids, append-error assertions for server-side seams, a contract suite with optional command-boundary checks, and a fake `command` binding for client-side tests. No append fake is shipped; browser tests fake command dispatch instead. No network, no Node built-ins, runner-agnostic except for the optional `vitest` peer used by the contract suite. |
-| **R3** | **Consumer integration-test tools** | A Node-only entry, `stdb-es/testing/integration`, that publishes a module to a disposable database, calls reducers, runs owner and anonymous SQL, connects clients, waits for subscription convergence, and tears down. Works against `spacetime start` locally and a remote server, with no hard dependency on `vitest`. |
-| **R4** | **Package Usage Guide** | `docs/usage-guide.md` with four parts — module, client, testing, frontend. It explains domain-separated module/client layouts, app-owned constants (`<SCOPE>_<DOMAIN>`), read-side codecs, shared `streamId` ownership rules, `commandId` idempotency, time travel, cache recovery, authorization, and all three consumer test layers. |
+| **R2** | **Consumer unit-test tools** | `stdb-es/testing` gives a consumer everything needed to test *their* module and client without a server: harness wrapper, wire fixtures, deterministic ids, append-error assertions for server-side seams, a contract suite with optional command-boundary checks, and a fake `command` binding for client-side tests. No append fake is shipped; client tests fake command dispatch instead, with the same API in React, Phaser, vanilla TypeScript, and Node. No network, no Node built-ins. Vitest `>=3 <4` is a required peer; only the contract suite imports it at runtime. |
+| **R3** | **Consumer integration-test tools** | A Node/CLI-only entry, `stdb-es/testing/integration`, that publishes a module to a disposable database, calls reducers, runs owner and anonymous SQL, connects clients, waits for subscription convergence, and tears down. Works against `spacetime start` locally and a remote server. It is never imported by frontend code and does not import Vitest. |
+| **R4** | **Package Usage Guide** | `docs/usage-guide.md` with four parts — module, client, testing, framework-neutral frontend. It explains domain-separated module/client layouts, app-owned constants (`<SCOPE>_<DOMAIN>`), read-side codecs, shared `streamId` ownership rules, `commandId` idempotency, time travel, cache recovery, authorization, connection/subscription lifecycle, and all three consumer test layers. |
 | **R5** | **CI gate for the above** | CI runs library and example typechecks, the offline unit suite, a disposable-server publish smoke test, and — once R3 lands — the consumer integration suite. A failure in any layer blocks merge. |
 | **R6** | **API reference** | `docs/API.md` documents every export from `.`, `./server`, `./client`, and `./testing` with its purpose, inputs/payload, and output/guarantees. Planned APIs are listed separately and never presented as shipped. |
 | **R7** | **README glossary** | `README.md` defines the consumer-facing terms used by the API and guides: stream, event envelope, version, expected version, position, state cache, version guard, projection, view, upcast, domain, cross-aggregate, and the other terms used by the consumer API. |
-| **R8** | **Example sets** | Each planned set contains a publishable module plus a simple React client with a basic UI. The sets cover idempotency, eventual consistency, cross-aggregate coordination, multiple domains, and schema evolution with minimal concept overlap. Implementation waits for an explicit go signal. |
-| **R9** | **Backend-owned command writes** (breaking change; §18, M15) | Browser code never builds an event envelope (`streamId`, `streamType`, `eventType`, `data`, `expectedVersion`) and never calls a generic append. It calls **app-defined public command reducers** with a typed command payload plus an idempotency key; only those reducers validate authorization and call `appendToStream`. Commands are declared in the module and mirrored to the frontend by `spacetime generate`. The generic `append_events` reducer is not part of the callable app surface. Counter examples expose `increment`, `decrement`, and `reset`. Rollout is complete after the six phases in §18.6. |
+| **R8** | **Example sets** | Each planned set contains a publishable module plus a simple TypeScript client and reference UI. React is the first reference UI; Phaser is the second. The sets cover idempotency, eventual consistency, cross-aggregate coordination, multiple domains, and schema evolution with minimal concept overlap. Implementation waits for an explicit go signal. |
+| **R9** | **Backend-owned command writes** (breaking change; §18, M15) | Client code never builds an event envelope (`streamId`, `streamType`, `eventType`, `data`, `expectedVersion`) and never calls a generic append. It calls **app-defined public command reducers** with a typed command payload plus an idempotency key; only those reducers validate authorization and call `appendToStream`. Commands are declared in the module and mirrored to the frontend by `spacetime generate`. The generic `append_events` reducer is not part of the callable app surface. Counter examples expose `increment`, `decrement`, and `reset`. Rollout is complete after the six phases in §18.6. |
 
 > **Implemented breaking change.** R9 supersedes the client `append`/`retry` surface in §13 and the
 > `makeAppendReducer` factory in §4. It does **not** rewrite shipped M0–M8 behavior; those milestones
@@ -850,9 +856,10 @@ createStreamSubscription({ connection, query(streamId), readRows, onRows });
   stream, registers callbacks once so SDK reconnect replay refreshes them, and routes errors to
   `onError` or rethrows them. `createStreamSubscription` keeps one per-stream query active and ignores
   stale callbacks after a switch.
-- The client entry is browser-safe; integration-test tooling is a separate Node-only entry (R3).
+- The client entry is framework-neutral (no framework, DOM, or Node-only imports); integration-test
+  tooling is a separate Node/CLI-only entry (R3).
 - **Superseded by R9 / M15 / §18 (implemented):** the `append`/`retry` path above and the generic
-  `makeAppendReducer` factory are removed from the browser-facing write path. Frontend code calls
+  `makeAppendReducer` factory are removed from the client write path. Frontend code calls
   generated command reducers with a typed command payload; decoding, upcasting, subscriptions, and
   `sliceRows` remain unchanged. This bullet records the baseline that M15 replaced; it does not alter
   the M0–M8 history.
@@ -901,12 +908,12 @@ createFakeCommand({ result?, error? });      // client tests: records intent + c
 
 `createModuleTest` returns `tx`, `call`, `view`, `anonymousView`, and the underlying harness. All
 contexts are shimmed automatically. `createFakeCommand` supports queued `nextResult`/`nextError`
-replies for timeout-and-retry sequences. No append fake is shipped; the browser has no append
-binding, and `wireEvents`/`ids` remain for server-side fixture seams. The task-oriented guide lives
-in `docs/unit testing.md`.
+replies for timeout-and-retry sequences. No append fake is shipped; clients have no append binding,
+and `wireEvents`/`ids` remain for server-side fixture seams. The same fake works for React, Phaser,
+vanilla TypeScript, and Node client tests. The task-oriented guide lives in `docs/unit testing.md`.
 
-Rules: no network, no Node built-ins, no server. Runner-agnostic except the optional `vitest` peer
-that the contract suite imports. A consumer needs one import and roughly ten lines for a first
+Rules: no network, no Node built-ins, no server. Vitest `>=3 <4` is a required peer, but only the
+contract suite imports it at runtime. A consumer needs one import and roughly ten lines for a first
 meaningful test; `test/unit-kit.test.ts` dogfoods the kit.
 
 ### 14.3 Layer 3 — consumer integration tests (`stdb-es/testing/integration`, R3)
@@ -962,7 +969,7 @@ and SpacetimeDB CLI `2.15.0`, then gates on build, library and example typecheck
 `vitest run`, a packed fresh-workspace install (`npm run check:pack`), the live maintainer smoke, and
 the consumer integration smoke (`npm run smoke:integration`) on disposable in-memory local servers.
 The pack check verifies the published `exports` map and shipped declarations from module-like and
-web-like workspaces; it loads browser-safe entry points at runtime and typechecks `stdb-es/server`,
+framework-neutral workspaces; it loads `.` and `./client` at runtime and typechecks `stdb-es/server`,
 which needs the SpacetimeDB host to execute. Workflow configuration is committed here; a GitHub
 Actions run has not yet been observed. The example typecheck refers to the counter set.
 
@@ -1090,8 +1097,13 @@ Resolved in v1:
    readiness, and stops that child in `dispose()`. The isolated directory avoids `spacetime.pid`
    contention with other servers. For an explicit URL, it connects to the external server and never
    stops a process it did not start. The kit is Node-only and shipped in M7.
-6. **Contract-test runner.** Keep `vitest` as an optional peer for the contract suite; the rest of
-   `stdb-es/testing` stays runner-agnostic.
+6. **Contract-test runner.** Vitest `>=3 <4` is a required peer for the package; only the contract
+   suite imports it at runtime, and the rest of `stdb-es/testing` stays runner-agnostic in
+   implementation.
+7. **Frontend framework neutrality (active scope change).** No React hooks, providers, Phaser
+   adapters, DOM helpers, or framework entry points belong in the package. Framework-specific
+   connection lifecycle stays in examples and docs; see the
+   [frontend-framework agnostic contract](spec-changes/frontend-framework-agnostic-contract.md).
 
 Still open: none at this time.
 

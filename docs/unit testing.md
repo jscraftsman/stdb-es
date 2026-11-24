@@ -20,12 +20,14 @@ fixture ids, provides a fake for generated command bindings, and ships a reusabl
 | `withIndexRanges(ctx)` | Harness shim used automatically by `createModuleTest` |
 | `runEventStoreContractTests(options)` | Shared invariant suite, including optional command-boundary checks |
 
-No append fake is shipped: the browser has no append binding. Use `createFakeCommand` for client
-tests; use `wireEvents`/`ids` only with server-side `appendToStream` fixtures.
+No append fake is shipped: clients have no append binding. Use `createFakeCommand` for client
+tests; use `wireEvents`/`ids` only with server-side `appendToStream` fixtures. The fake is a plain
+async callback, so React, Phaser, vanilla TypeScript, and Node client tests use the same API.
 
-`vitest` is an optional peer dependency. `createModuleTest`, `ids`, `expectAppendError`, and
-`createFakeCommand` do not need it; `runEventStoreContractTests` imports `describe`/`expect`/`it`
-from it and registers cases at call time.
+`vitest >=3 <4` is a required peer dependency of `stdb-es`; install it as a dev dependency in every
+workspace that uses this entry. Only `runEventStoreContractTests` imports `describe`/`expect`/`it` at
+runtime; `createModuleTest`, `ids`, `expectAppendError`, and `createFakeCommand` are runner-agnostic in
+implementation.
 
 ---
 
@@ -54,7 +56,7 @@ but including it is harmless.
 
 ## 2. A first module test
 
-Call the app's real command reducers. The browser sends intent; the test asserts the facts the module
+Call the app's real command reducers. The client sends intent; the test asserts the facts the module
 derived from it.
 
 ```ts
@@ -253,7 +255,9 @@ expect(() =>
 ## 5. Client tests with a fake command
 
 The client sends intent and owns no event log. Its only side effect is the generated reducer binding,
-so `createFakeCommand` is enough for command-id, retry, and rejection tests.
+so `createFakeCommand` is enough for command-id, retry, and rejection tests. It is framework-neutral:
+pass the same fake to code that uses React hooks, Phaser scenes, vanilla callbacks, or plain SDK
+functions. No DOM or framework runtime is needed.
 
 ```ts
 import { createCommandClient } from 'stdb-es/client';
@@ -304,8 +308,8 @@ expect(timeout.calls[0]).toEqual(timeout.calls[1]);
 ```
 
 Queued replies are consumed in order; after the queue is empty the configured default applies.
-`clear()` clears recorded calls without clearing queued replies. No append fake is shipped; the
-browser has no append binding. See
+`clear()` clears recorded calls without clearing queued replies. No append fake is shipped; clients
+have no append binding. See
 [§18 of the M15 change record](spec-changes/frontend-write-boundary-commands-r9-m15.md#18-frontend-write-boundary-commands-instead-of-append-r9--m15).
 
 ---
@@ -341,7 +345,7 @@ runEventStoreContractTests({
 ```
 
 Here `counterStreamId(id)` is the app's helper for the id its command reducer derives. The `append`
-seam seeds store invariants on the server; `commands` exercises the browser-facing boundary through
+seam seeds store invariants on the server; `commands` exercises the client-facing boundary through
 the real reducer. The command cases check one append per `commandId`, replay on a repeat with the same
 key, and rejection when `authorize` has not seeded an ownership row for the caller.
 
@@ -371,7 +375,7 @@ No `spacetime start` is needed. These tests use the in-memory module harness onl
 | A stale-version test returns `replayed` | You reused committed event ids in the server-side fixture. Generate fresh ids with a new prefix. |
 | A command replay appears to do nothing | That is correct when `commandId` is repeated. Use a fresh command id for a new intent. |
 | A command fake has no `lastCall` | Bind `createFakeCommand` to the generated command reducer; the testing entry no longer ships an append fake. |
-| `vitest` import fails | Install the optional peer as a dev dependency when using `runEventStoreContractTests`. |
+| `vitest` import fails | Install the required peer (`>=3 <4`) as a dev dependency for this workspace. |
 | Tests leak state between cases | Create the `createModuleTest` instance inside each `it`. |
 
 ---

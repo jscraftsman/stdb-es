@@ -32,11 +32,14 @@ React and Phaser are reference UIs, not part of the package contract.
 - [x] Phase 2 — Unit testing kit: confirm the Vitest-based kit works for all frontend examples.
 - [x] Phase 3 — Integration testing kit: confirm the Node/CLI boundary is isolated from frontend code.
 - [x] Phase 4 — `react-counter`: keep React as the reference UI with no API drift.
-- [ ] Phase 5 — Docs: document the framework-neutral contract and lifecycle.
+- [x] Phase 5 — Docs: document the framework-neutral contract and lifecycle.
 - [ ] Phase 6 — `phaser-counter`: add the Phaser example and root plumbing.
 - [ ] Phase 7 — Docs: document the new example.
 - [ ] Phase 8 — Review all docs and verification gates for consistency.
 
 ## Current state
 
-Phase 4 is complete. Awaiting the go signal for Phase 5.
+Phase 5 is complete. The README, API reference, usage guide, unit/integration testing guides,
+publishing guide, and active design-record entries now describe the framework-neutral contract,
+required Vitest peer, Node/CLI integration boundary, and subscribe/unsubscribe/disconnect lifecycle.
+Awaiting the go signal for Phase 6.

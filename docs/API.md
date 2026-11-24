@@ -5,7 +5,9 @@ see the [Package Usage Guide](usage-guide.md). Planned APIs are listed at the en
 available yet.
 
 > Requires `spacetimedb >= 2.15 < 3`. JSON event payloads are the only implemented payload mode.
-> TypeScript server modules only. `vitest` is an optional peer needed only by `stdb-es/testing`.
+> `stdb-es/server` is for TypeScript server modules only. `stdb-es/testing/integration` is Node/CLI-only.
+> `.` and `./client` are framework-neutral: they contain no React, Phaser, DOM, or Node-only APIs.
+> `vitest >= 3 < 4` is a required peer dependency; `stdb-es/testing` is built on Vitest.
 
 ## Import map
 
@@ -13,9 +15,9 @@ available yet.
 | --- | --- | --- |
 | `stdb-es` | module or client | Stable error codes, error helpers, the `streamId` helper, protocol types and constants |
 | `stdb-es/server` | SpacetimeDB module only | Tables, append/read, aggregates, repositories, projections, views, doctor |
-| `stdb-es/client` | browser or Node client | Command dispatch, event registry/codecs, row helpers, subscription query and event-row helpers |
-| `stdb-es/testing` | offline unit tests | Module/client helpers, command fakes, harness shim, fixtures, contract suite |
-| `stdb-es/testing/integration` | Node-only integration tests | Disposable server/database lifecycle, CLI calls, SQL, subscriptions |
+| `stdb-es/client` | any TypeScript frontend or Node SDK client | Command dispatch, event registry/codecs, row helpers, subscription query and event-row helpers |
+| `stdb-es/testing` | offline Vitest unit tests | Module/client helpers, command fakes, harness shim, fixtures, contract suite |
+| `stdb-es/testing/integration` | Node/CLI-only integration tests | Disposable server/database lifecycle, CLI calls, SQL, subscriptions |
 
 Conventions used below:
 
@@ -78,7 +80,7 @@ Validation rules:
 
 `streamId` is a formatting helper only. It does not decide who may create a stream and does not check
 ownership. Import it from `stdb-es` in module code for write-side ids and in client code for read-side
-queries and subscriptions; browser commands must not carry a stream id. Keep the prefix in an
+queries and subscriptions; client commands must not carry a stream id. Keep the prefix in an
 app-owned `STREAM_PREFIXES_<DOMAIN>` constant.
 
 ### 1.4 Protocol constants
@@ -152,7 +154,7 @@ a generic append reducer: every reducer a client can call is part of the app's p
 | --- | --- | --- | --- |
 | `appendToStream(ctx, args, config?)` | Validates and appends a batch in the caller's transaction | `ctx: C extends EsCtx`, `args: AppendArgs`, optional `EventStoreConfig<C>` | `AppendResult`. Throws the `ES_*` errors listed in §1.1. |
 
-A command reducer derives `AppendArgs` itself. The browser sends only the command payload, including
+A command reducer derives `AppendArgs` itself. The client sends only the command payload, including
 `commandId`; the module derives the stream id, event ids, event types, payloads, and expected version.
 See [§18.3 of the M15 change record](spec-changes/frontend-write-boundary-commands-r9-m15.md#183-command-payload-contract)
 for the command contract.
@@ -220,7 +222,7 @@ payload.
 For command-reducer writes, pass `eventIds` derived from the command's `commandId`. A retried command
 then reaches `appendToStream` with the same ids and settles as a replay. The default
 `newEventId`/`ctx.newUuidV7()` path is for server-side fixtures and non-command module code, not for
-browser idempotency.
+command idempotency.
 
 A missing cache row is always recovered by replay. A stale cache degrades performance, not
 correctness.
@@ -269,7 +271,12 @@ The library exports no repair reducer. Expose one from your app behind an author
 
 ---
 
-## 3. `stdb-es/client` — browser-safe client API
+## 3. `stdb-es/client` — framework-neutral client API
+
+This entry contains no React hooks, providers, Phaser adapters, DOM globals, generated-code imports, or
+Node-only modules. Supply generated reducer callbacks (hooks, scene methods, or plain async functions)
+to `createCommandClient`, and a generated or structurally compatible connection to the subscription
+helpers. Your app or framework owns connection creation and teardown.
 
 ### 3.1 Registry and decoding
 
@@ -285,14 +292,15 @@ The library exports no repair reducer. Expose one from your app behind an author
 | `sliceRows(rows, opts?)` | Filters and sorts decoded rows | `DecodedEventRow[]`, options | `DecodedEventRow[]` sorted by `version`; timestamps are compared only when present |
 
 The registry is client-side: the server stores opaque JSON. Adding an event type is an app/registry
-change, not a database migration. It is the codec for **reading** stored rows; browser writes use
+change, not a database migration. It is the codec for **reading** stored rows; client writes use
 generated command reducers (§3.2). The `encode` field remains in `EventDefinition` for app-defined
 codecs, but the package no longer exports an `encodeEvents` helper.
 
 ### 3.2 Command client
 
-The browser-facing write surface is a set of generated command reducers. `createCommandClient` adds an
-idempotency key and dispatches intent; it never builds an event envelope.
+The client-facing write surface is a set of generated command reducers. `createCommandClient` adds an
+idempotency key and dispatches intent; it never builds an event envelope. The callbacks may come from
+any frontend framework or from plain SDK code.
 
 | Symbol | Purpose | Inputs / fields | Output |
 | --- | --- | --- | --- |
@@ -300,7 +308,7 @@ idempotency key and dispatches intent; it never builds an event envelope.
 | `CommandCall<TCommand>` | Shape of a generated command reducer binding | `(command: CommandEnvelope<TCommand>) => Promise<unknown>` | The resolved value is ignored |
 | `CommandIdOptions` | Constructor options | Optional `newCommandId?: () => string` | Defaults to `crypto.randomUUID()` |
 | `WithCommandIdOptions` | Per-command options | `CommandIdOptions` plus optional `commandId?: string` | An explicit key reuses a pending command |
-| `newCommandId()` | Generates a fresh idempotency key | None | `string` from `crypto.randomUUID()` |
+| `newCommandId(options?)` | Generates a fresh idempotency key | Optional `{ newCommandId?: () => string }` | `string`; uses the injected generator, otherwise `crypto.randomUUID()` |
 | `withCommandId(command, options?)` | Adds a key without sending | Command object and options | `CommandEnvelope<TCommand>`; preserves an existing non-empty `commandId` |
 | `CommandCalls<TCommands>` | One generated reducer per command name | Map of names to `CommandCall` | Compile-time only |
 | `createCommandClient(calls, options?)` | Binds generated reducers into a dispatcher | `CommandCalls<TCommands>`, optional `CommandIdOptions` | `CommandClient<TCommands>` |
@@ -361,6 +369,11 @@ and invokes `onApplied` again, so `onRows` receives refreshed rows without a sec
 call. `onError` receives subscription and reducer errors; if omitted, the error is rethrown rather
 than swallowed. `unsubscribeThen` delegates to the SDK handle when available.
 
+Subscription and connection lifetimes are separate. `unsubscribe()`/`unsubscribeThen()` remove only
+the retained query for that handle; the app or framework still owns the generated `DbConnection` and
+must call `connection.disconnect()` (or let its SDK provider do so) at shutdown. Reconnect replay
+refreshes an active subscription, so do not resubscribe merely because the connection reconnected.
+
 ```ts
 import { streamId } from 'stdb-es';
 import { subscribeEventRows } from 'stdb-es/client';
@@ -385,9 +398,10 @@ subscription.unsubscribe();
 
 ## 4. `stdb-es/testing` — offline test tooling
 
-`runEventStoreContractTests` imports `vitest` at runtime, so install it as a dev dependency when using
-the contract suite. The other tooling in this entry is runner-agnostic. See the
-[unit testing guide](unit%20testing.md) for task-oriented examples.
+Vitest `>=3 <4` is a required peer of the package. Install it as a dev dependency in every workspace
+that uses this entry; only `runEventStoreContractTests` imports Vitest at runtime, while the other
+helpers are framework- and runner-agnostic. See the [unit testing guide](unit%20testing.md) for
+task-oriented examples.
 
 ### 4.1 Module and client helpers
 
@@ -409,7 +423,7 @@ function directly with the matching harness context type.
 `result`/`error` (default: resolve `undefined`) applies. `clear()` empties `calls` but keeps the queue.
 It never sees a stream id, event, or expected version.
 
-No append fake is shipped: the browser has no append binding. For server-side store tests, use
+No append fake is shipped: clients have no append binding. For server-side store tests, use
 `wireEvents`/`ids` with your own `appendToStream` seam, or `expectAppendError` on an existing fixture.
 
 ### 4.2 Harness shim and fixtures
@@ -432,7 +446,7 @@ production host is unaffected; do not add the wrapper to module code.
 | `ContractStream.sample` | Fixture events and expected state | `wire(streamId): EncodedEvent[]` with deterministic ids; `domain(streamId): TEvent[]`; `expectedState: TState`; optional `corrupt(state): TState` |
 | `ContractProjections` | Optional projection check | `projections: readonly InlineProjection[]`, `snapshot(ctx): unknown` in stable order |
 | `ContractView` | Optional view check | `name`, `view`, `params(streamId)`, optional `seed(ctx, streamId)`, `check(result, streamId)` |
-| `ContractCommands<TCommand>` | Optional browser-boundary check | `name`, `command(streamId, commandId)`, optional `authorize(ctx, streamId)`, `version(ctx, streamId)` |
+| `ContractCommands<TCommand>` | Optional command-boundary check | `name`, `command(streamId, commandId)`, optional `authorize(ctx, streamId)`, `version(ctx, streamId)` |
 | `EventStoreContractOptions` | Suite configuration | `name?`, `spacetimedb`, `moduleExports?`, `append`, `streams`, `commands?`, `projections?`, `views?`, `streamId?(stream)` |
 
 | Function | Purpose | Inputs | Output / behavior |
@@ -440,7 +454,7 @@ production host is unaffected; do not add the wrapper to module code.
 | `runEventStoreContractTests(options)` | Registers the shared contract suite | Options above | `void`; registers Vitest `describe`/`it` cases at call time. Each case builds a fresh harness and wraps contexts with `withIndexRanges`. |
 
 The required `append` option is a **server-side write seam** used to seed store invariants, not a
-browser API. When `commands` is supplied, `name` must be exported through `moduleExports`; the suite
+client API. When `commands` is supplied, `name` must be exported through `moduleExports`; the suite
 then checks single-append command handling, `commandId` replay, and — when `authorize` is present —
 rejection of a sender without an ownership row.
 
