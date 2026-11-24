@@ -3,8 +3,12 @@
 A small full-stack example set: one SpacetimeDB module plus one React client using `stdb-es` for the
 event log, a state cache, a live anonymous read model, and backend-owned command writes.
 
-This is the baseline for the planned example sets. It deliberately stays small: one stream, three
-event types, one state table, an ownership table, two views, and one screen.
+This is the baseline full-stack example. It deliberately stays small: one stream, three event types,
+one state table, an ownership table, two views, and one screen.
+
+The React-specific code is confined to the UI layer (`main.tsx`, `App.tsx`, `CounterPanel.tsx`, and
+`styles.css`). The module, generated bindings, command client, and test kits are framework-neutral; a
+Phaser or vanilla TypeScript client uses the same package API and supplies its own lifecycle wiring.
 
 ## Prerequisites
 
