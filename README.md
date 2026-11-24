@@ -8,7 +8,7 @@ SpacetimeDB is the whole backend. The module is the application server, reducers
 and views are the client read path. `stdb-es` adds the event-sourcing half without asking you to run
 a second database, a message broker, or a separate read-model store.
 
-> **Status: 0.4.0, pre-release.** The API may change. Requires `spacetimedb >= 2.15 < 3`.
+> **Status: 0.4.2, pre-release.** The API may change. Requires `spacetimedb >= 2.15 < 3`.
 > JSON event payloads are the only implemented mode; typed-enum payloads are designed but not
 > shipped yet. TypeScript server modules only.
 
@@ -815,7 +815,7 @@ and `examples/phaser-counter`, and there is no `sets/` tier. The cleanup is comp
 
 The smoke republishes `stdb-es-counter-with-frontend`, drives the generated command reducers, and
 asserts against `es_stream` plus the app-owned names in `TABLES_COUNTER.state` and
-`VIEWS_COUNTER.summary` (`counter_state` and `counter_summary`) — including deterministic event ids,
+`TABLES_COUNTER.summary` (`counter_state` and `counter_summary`) — including deterministic event ids,
 an idempotent replay, non-owner rejection, and a cache row that is deleted and then rebuilt by replay.
 
 The runnable full-stack sets live in

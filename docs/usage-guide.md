@@ -1582,17 +1582,17 @@ source of truth and does not fetch missing history.
 ```ts
 import { streamId } from 'stdb-es';
 import { tableQuery, viewQuery } from 'stdb-es/client';
-import { STREAM_PREFIXES_COUNTER, TABLES_COUNTER, VIEWS_ORDER } from './constants.js';
+import { STREAM_PREFIXES_COUNTER, TABLES_COUNTER, VIEWS_COUNTER } from './constants.js';
 
 const id = streamId(STREAM_PREFIXES_COUNTER.counter, '1');
 
 const queries = [
-  tableQuery(TABLES_COUNTER.summary),
-  viewQuery(VIEWS_ORDER.stream, [id]),
-  viewQuery(VIEWS_ORDER.at, [id, 10]),
+  tableQuery(TABLES_COUNTER.state),
+  viewQuery(VIEWS_COUNTER.stream, [id]),
+  viewQuery(VIEWS_COUNTER.summary),
 ];
 
-viewQuery(VIEWS_ORDER.stream, ["O'Brien"]); // strings are escaped by viewQuery
+viewQuery(VIEWS_COUNTER.stream, ["O'Brien"]); // strings are escaped by viewQuery
 ```
 
 `viewQuery(name, args)` emits `SELECT * FROM name(args...)`, escaping strings and formatting
@@ -1605,9 +1605,9 @@ import { subscribeEventRows } from 'stdb-es/client';
 
 const subscription = subscribeEventRows({
   connection, // a generated DbConnection
-  query: { view: VIEWS_ORDER.stream, args: [id] },
+  query: { view: VIEWS_COUNTER.stream, args: [id] },
   streamId: id,
-  readRows: (ctx) => [...ctx.db.orderStream.iter()], // generated cache for the view
+  readRows: (ctx) => [...ctx.db.counterStream.iter()], // generated cache for the view
   onRows: (rows) => {
     currentRows = rows;
   },
@@ -1634,8 +1634,8 @@ import { createStreamSubscription } from 'stdb-es/client';
 
 const streams = createStreamSubscription({
   connection,
-  query: (streamId) => ({ view: VIEWS_ORDER.stream, args: [streamId] }),
-  readRows: (ctx) => [...ctx.db.orderStream.iter()],
+  query: (streamId) => ({ view: VIEWS_COUNTER.stream, args: [streamId] }),
+  readRows: (ctx) => [...ctx.db.counterStream.iter()],
   onRows: (rows, _ctx, streamId) => renderStream(streamId, rows),
   onError: (error) => report(error),
 });
@@ -2192,4 +2192,4 @@ and `createdAtMicros`). Use it when you want the domain event rather than raw ro
 - [ ] Projections are deterministic and have `reset` if rebuilds are needed.
 - [ ] Old payloads have `upgrade` functions in the client registry.
 - [ ] The contract suite and module unit tests run offline in CI.
-- [ ] The React client reads public views/materialized tables only.
+- [ ] The frontend/client reads public views/materialized tables only.

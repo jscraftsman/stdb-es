@@ -21,8 +21,9 @@ The kit requires:
 - The SpacetimeDB CLI `2.15.0` on `PATH` (`spacetime --version`).
 - Your module source directory (default: `spacetimedb`) publishable with `spacetime publish`.
 
-No `vitest` dependency is required. The kit works with Vitest, Node's built-in test runner, or a
-plain script.
+The integration kit itself does not import Vitest and works with Vitest, Node's built-in test runner,
+or a plain script. The package still declares Vitest `>=3 <4` as a required peer because the
+`stdb-es/testing` contract suite uses it.
 
 > The kit publishes to a disposable database. Treat `database` as throwaway data and never point it
 > at a database whose contents you need to keep.
@@ -70,6 +71,11 @@ Each positional reducer argument is serialized as one CLI token. A command such 
 the stream id, event id, event type, payload, and expected version. Never call a generic
 `append_events` reducer from a client-facing path; see the backend-owned command contract in the
 [M15 change record](spec-changes/frontend-write-boundary-commands-r9-m15.md#183-command-payload-contract).
+
+> **Fixture contract.** These snippets follow the shipped integration fixture: `claim_counter` plus
+> `increment(counterId, commandId, by)`. The runnable counter examples use first-writer ownership and
+> `increment(counterId, by, commandId)` instead. Argument order is app-defined; always follow the
+> module's exported field order.
 
 ## 3. Connecting to an external server
 
@@ -166,15 +172,15 @@ await client.close();
 `client.rows(table)` returns a snapshot. Inserts, deletes, and row updates are applied as subscription
 updates arrive; always assert through `waitFor` rather than sleeping.
 
-For parameterized views, build the query with `viewQuery` and `sqlLiteral` from the framework-neutral
-`stdb-es/client` entry:
+For parameterized views, build the query with `viewQuery` from the framework-neutral
+`stdb-es/client` entry; it escapes and formats SQL literals for you:
 
 ```ts
-import { sqlLiteral, viewQuery } from 'stdb-es/client';
+import { viewQuery } from 'stdb-es/client';
 
 const client = await env.connect({
   anonymous: true,
-  queries: [viewQuery('stream_view', [sqlLiteral('counter-1')])],
+  queries: [viewQuery('stream_events', ['counter-1'])],
 });
 ```
 
@@ -182,8 +188,8 @@ const client = await env.connect({
 
 ## 7. Identities and concurrency
 
-Two anonymous CLI calls use distinct throwaway identities. Owner SQL sees all rows; anonymous SQL
-uses the database owner identity unless you pass `{ anonymous: true }`. Command reducers use
+Two anonymous CLI calls use distinct throwaway identities. SQL uses the database owner identity by
+default; pass `{ anonymous: true }` to use a throwaway identity. Command reducers use
 `ctx.sender`, so finish owner setup with the saved CLI identity, then use anonymous calls to assert
 that a non-owner is rejected:
 

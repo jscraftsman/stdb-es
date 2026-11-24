@@ -1,9 +1,8 @@
 # Frontend-framework agnostic client contract
 
-**Status: on-going**
+**Status: completed**
 
-> Active spec-change record. It may be updated while the work is in progress. When all phases are
-> complete, change the status to `completed` and treat it as readonly historical data.
+> Completed spec-change record. All phases are done; treat this as readonly historical data.
 
 ## Scope
 
@@ -35,10 +34,10 @@ React and Phaser are reference UIs, not part of the package contract.
 - [x] Phase 5 — Docs: document the framework-neutral contract and lifecycle.
 - [x] Phase 6 — `phaser-counter`: add the Phaser example and root plumbing.
 - [x] Phase 7 — Docs: document the new example.
-- [ ] Phase 8 — Review all docs and verification gates for consistency.
+- [x] Phase 8 — Review all docs and verification gates for consistency.
 
 ## Current state
 
-Phase 7 is complete. The README, usage guide, publishing guide, integration testing guide, React
-example README, and active design-record entries now document both reference UIs, their scripts and
-ports, and the non-React lifecycle boundaries. Awaiting the go signal for Phase 8.
+All eight phases are complete. React and Phaser are reference UIs; the shipped client contract stays
+framework-neutral. The final review aligned the version/status text, smoke assertion names, usage and
+integration guide snippets, and CI/publish typechecks. This record is now readonly historical data.

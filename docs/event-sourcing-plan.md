@@ -13,9 +13,9 @@ Target: a TypeScript npm package for SpacetimeDB 2.15.x (CLI verified locally: `
 > [docs/spec-changes/](spec-changes/). Each record is labeled `completed` or `on-going`; completed
 > records are readonly historical data and are not rewritten by later path or API cleanup.
 
-> **Active scope change:** [frontend-framework agnostic client contract](spec-changes/frontend-framework-agnostic-contract.md)
-> makes React and Phaser reference UIs rather than package APIs. Its documentation and both example
-> phases are complete; the final consistency review is in progress.
+> **Completed scope change:** [frontend-framework agnostic client contract](spec-changes/frontend-framework-agnostic-contract.md)
+> makes React and Phaser reference UIs rather than package APIs. All phases are complete and the
+> change record is readonly historical data.
 
 > Spacetime is the whole backend: the module *is* the application server, reducers are the write
 > path, and views are the client read path. The package therefore ships **table definitions, pure
@@ -1104,12 +1104,12 @@ Resolved in v1:
 6. **Contract-test runner.** Vitest `>=3 <4` is a required peer for the package; only the contract
    suite imports it at runtime, and the rest of `stdb-es/testing` stays runner-agnostic in
    implementation.
-7. **Frontend framework neutrality (active scope change).** No React hooks, providers, Phaser
+7. **Frontend framework neutrality (completed scope change).** No React hooks, providers, Phaser
    adapters, DOM helpers, or framework entry points belong in the package. Framework-specific
    connection lifecycle stays in examples and docs; see the
    [frontend-framework agnostic contract](spec-changes/frontend-framework-agnostic-contract.md).
 
-Still open: the final consistency review for the frontend-framework-agnostic contract (Phase 8).
+Still open: none at this time.
 
 **Implemented in M15 (§18):** the frontend append path is replaced by backend-owned command reducers.
 The browser sends an intent payload (command + idempotency key); the module decides stream id, event
