@@ -95,6 +95,7 @@ jobs:
           npm run build
           npm run typecheck
           npm run example:react-counter:typecheck
+          npm run example:phaser-counter:typecheck
 
       - name: Unit tests
         run: npm test
@@ -129,8 +130,11 @@ jobs:
       - name: Integration kit smoke
         run: npm run smoke:integration
 
-      - name: Counter example integration tests
+      - name: React counter example integration tests
         run: npm run example:react-counter:test:integration
+
+      - name: Phaser counter example integration tests
+        run: npm run example:phaser-counter:test:integration
 
       - name: Stop disposable local server
         if: always()

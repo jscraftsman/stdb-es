@@ -14,8 +14,8 @@ Target: a TypeScript npm package for SpacetimeDB 2.15.x (CLI verified locally: `
 > records are readonly historical data and are not rewritten by later path or API cleanup.
 
 > **Active scope change:** [frontend-framework agnostic client contract](spec-changes/frontend-framework-agnostic-contract.md)
-> makes React and Phaser reference UIs rather than package APIs. Its documentation phase is complete;
-> the Phaser example work remains in progress.
+> makes React and Phaser reference UIs rather than package APIs. Its documentation and Phaser example
+> phases are complete; the remaining example documentation and consistency review are in progress.
 
 > Spacetime is the whole backend: the module *is* the application server, reducers are the write
 > path, and views are the client read path. The package therefore ships **table definitions, pure

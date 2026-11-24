@@ -1,0 +1,21 @@
+{
+  "name": "stdb-es-counter-with-phaser-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "spacetime build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "publish": "spacetime publish stdb-es-counter-with-phaser -s local -p .",
+    "publish:clean": "spacetime publish stdb-es-counter-with-phaser -s local -p . --delete-data=always -y"
+  },
+  "dependencies": {
+    "stdb-es": "file:../../../"
+  },
+  "devDependencies": {
+    "spacetimedb": "2.15.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.7"
+  }
+}
