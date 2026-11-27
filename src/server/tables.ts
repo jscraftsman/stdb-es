@@ -20,6 +20,8 @@ export const GLOBAL_HEAD = 'global';
 export const esStream = table(
   {
     name: 'es_stream',
+    // Every append reads this concurrency token; keep it resident.
+    cachePolicy: 'required_in_memory',
     indexes: [
       { accessor: 'byType', algorithm: 'btree', columns: ['streamType'] },
     ],
@@ -44,6 +46,8 @@ export const esStream = table(
 export const esEvent = table(
   {
     name: 'es_event',
+    // Append-only history grows without bound; replay can read it from a deeper tier.
+    cachePolicy: 'no_requirement',
     indexes: [
       { accessor: 'byPosition', algorithm: 'btree', columns: ['position'] },
       { accessor: 'byStreamVersion', algorithm: 'btree', columns: ['streamId', 'version'] },
@@ -72,7 +76,8 @@ export const esEvent = table(
 
 /** Single-row counter used for `esEvent.position`. */
 export const esHead = table(
-  { name: 'es_head' },
+  // The global position counter is read and updated in every append.
+  { name: 'es_head', cachePolicy: 'required_in_memory' },
   {
     id: t.string().primaryKey(),
     position: t.u64(),

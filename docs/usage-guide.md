@@ -313,7 +313,7 @@ import { TABLES_COUNTER } from './domains/counter/constants.js';
 
 /** Private, app-owned state cache. `version` is the guard used by replay-on-miss. */
 export const counterState = table(
-  { name: TABLES_COUNTER.state },
+  { name: TABLES_COUNTER.state, cachePolicy: 'required_in_memory' },
   {
     streamId: t.string().primaryKey(),
     version: t.u32(),
@@ -323,7 +323,7 @@ export const counterState = table(
 
 /** The first caller to use a counter owns it; command reducers check `ctx.sender`. */
 export const counterOwner = table(
-  { name: TABLES_COUNTER.owner },
+  { name: TABLES_COUNTER.owner, cachePolicy: 'required_in_memory' },
   {
     streamId: t.string().primaryKey(),
     owner: t.identity(),
@@ -1120,7 +1120,7 @@ export type CounterEvent =
 
 /** App-owned and private. `version` is the guard. */
 const counterState = table(
-  { name: TABLES_COUNTER.state },
+  { name: TABLES_COUNTER.state, cachePolicy: 'required_in_memory' },
   {
     streamId: t.string().primaryKey(),
     version: t.u32(),
@@ -1180,6 +1180,29 @@ Cache rules:
 3. A missing row means **replay the log**, never "state is empty".
 4. Changing `evolve` does not change already-cached state. Rebuild the cache and run the doctor after
    a fold change.
+
+### 1.3a Choosing `cachePolicy` (SDK 2.16+)
+
+`cachePolicy` is a **table** option. It says how far the host may move a table's pages and blobs from
+memory; it does not change persisted data, visibility, subscriptions, or the event log's source-of-truth
+role. SDK 2.16 defaults to `required_in_memory`; SDK 3.0 changes the default to `no_requirement`, so pin
+tables that need resident reads instead of relying on the default.
+
+| Table kind | Recommended policy | Why |
+| --- | --- | --- |
+| Library `esStream`, `esHead` | `required_in_memory` (already set by `esTables`) | Every append reads or updates the stream version and global position. |
+| Library `esEvent` | `no_requirement` (already set by `esTables`) | Append-only history grows without bound; replay and audit reads can tolerate deeper storage. |
+| App state caches and ownership tables | `required_in_memory` | Command reducers do point reads on every write; a page-in on that path adds latency. |
+| Projections and materialized read models | `required_in_memory` for hot UI reads; `required_on_disk` for large, cold models | Views and subscriptions read these often, but not every read model must stay in RAM. |
+| App-owned archive tables | `no_requirement` | Long-lived history need not stay resident. |
+| Parameterized views | No separate policy | The option belongs to the tables the view reads, not to the view. Pin those source tables or their materialized read model. |
+
+A view has no `cachePolicy` field. For a parameterized view over a read model, pin the read model. For
+one that scans raw `es_event`, accept cold reads or materialize a smaller read model; do not pin the
+whole event log to make a view fast. SDK 2.16 emits only non-default policies in the module definition,
+so an in-memory table has no `TableCachePolicies` entry even when its source sets
+`cachePolicy: 'required_in_memory'`. Treat a policy change like any other schema change and republish
+with the target SDK.
 
 ### 1.4 Command reducers are the write path
 
@@ -1295,7 +1318,8 @@ produce different results. `rebuildBatch({ reset: true })` requires every projec
 
 For a hot read path, expose a materialized table with `spacetimedb.anonymousView` (anonymous views are
 materialized once) or a per-caller `spacetimedb.view` keyed on `ctx.sender`. Use the library's view
-factories only for low-volume audit/support reads.
+factories only for low-volume audit/support reads. Set the backing table's `cachePolicy` as described
+in §1.3a; the view itself has no separate cache policy.
 
 ### 1.7 Views and authorization
 
@@ -1329,7 +1353,8 @@ Compare identities with `.equals()`, not `===`. If `authorize` returns false, th
 empty result (`undefined` for the head view), never an error that leaks existence.
 
 Parameterized views accept SQL literals only, have no primary-key metadata, and share one client
-cache per view. They are not a substitute for a materialized table on a hot path.
+cache per view. They are not a substitute for a materialized table on a hot path. They also have no
+`cachePolicy` option: pin the tables or read models they read, as described in §1.3a.
 
 ### 1.8 Doctor helpers
 
@@ -1625,7 +1650,8 @@ subscription.unsubscribe();
 when needed. `readRows` extracts rows from the SDK context. With `streamId`, only rows for that stream
 reach `onRows`; `rowStreamId` overrides the default `streamId` / `stream_id` row lookup. Callbacks are
 registered once: SDK automatic reconnect replay invokes `onApplied` again without a second
-`subscribe()`. Errors go to `onError`; without it they are rethrown, never swallowed.
+`subscribe()`. Errors go to `onError`; without it the bridge throws, but SpacetimeDB 2.16 catches and
+logs callback throws, so supply a handler when the app needs to handle failures.
 
 For a screen that shows one stream at a time, `createStreamSubscription` keeps one active query:
 

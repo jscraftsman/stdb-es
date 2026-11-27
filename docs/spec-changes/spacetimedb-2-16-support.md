@@ -32,9 +32,9 @@ releases without changing the framework-neutral client contract.
 
 - [x] Phase 1 — Version support baseline: peer/dev/example/CLI version bumps, regenerated bindings,
       version-neutral harness notes, new spec-change record, and full 2.16.3 verification.
-- [ ] Phase 2 — Subscription error contract: align docs and tests with the SDK's 2.16 callback-error
-      behavior; optionally prefer the SDK's second `error` argument with a `ctx.event` fallback.
-- [ ] Phase 3 — Tiered storage policy and app guidance: apply the library table policies above, add
+- [x] Phase 2 — Subscription error contract: align docs and tests with the SDK's 2.16 callback-error
+      behavior; prefer an optional SDK `error` argument with a `ctx.event` fallback.
+- [x] Phase 3 — Tiered storage policy and app guidance: apply the library table policies above, add
       schema tests, and document recommendations for app state tables, projections/read models, event
       tables, parameterized views, and the 3.0 default change.
 - [ ] Phase 4 — Final consistency and release prep: close this record, align the design record and
@@ -54,6 +54,33 @@ All gates passed against CLI and SDK `2.16.3`:
   `es_head`, and the anonymous public view;
 - no API signatures changed. `withIndexRanges` remains necessary.
 
+## Phase 2 verification
+
+- The bridge's internal error callback accepts an optional second `error` argument while the exported
+  `SubscriptionBuilder` type keeps the SDK's one-argument public shape. `subscribeEventRows` prefers
+  that argument when a compatible builder supplies it and falls back to `ctx.event`.
+- The public `onError` option keeps its `(error, ctx)` signature and stays optional. The bridge still
+  throws when it is omitted, but docs now state that SDK 2.16 catches and logs callback throws, so
+  apps should supply a handler for deterministic handling.
+- Tests cover SDK-shaped one-argument builders, second-argument preference with `ctx.event` fallback,
+  and the no-handler throw. All 139 library tests pass, along with build, typecheck, both example
+  typechecks, the fresh-app pack check, and the live integration-kit smoke (19 checks).
+- No framework, DOM, or Node-only APIs were added to `.` or `./client`.
+
+## Phase 3 verification
+
+- `esStream` and `esHead` explicitly set `cachePolicy: 'required_in_memory'`; `esEvent` sets
+  `cachePolicy: 'no_requirement'`. SDK 2.16 emits only the non-default policy in `moduleDef`, which the
+  new schema test verifies.
+- `docs/usage-guide.md` §1.3a gives app recommendations for state caches, ownership tables,
+  projections/read models, event/archive tables, parameterized views, and the SDK 3.0 default change.
+  `docs/API.md` and `docs/event-sourcing-plan.md` point to the same contract.
+- All 143 library tests pass, including the new cache-policy tests. Build, typecheck, both example
+  typechecks, both offline example suites, the fresh-app pack check, both live example integration
+  suites (5 tests each), and the live integration-kit smoke (19 checks) pass under CLI 2.16.3.
+- Regenerating both examples' client bindings produced no changes. No public API signatures changed,
+  and no framework, DOM, or Node-only APIs were added to `.` or `./client`.
+
 ## Current state
 
-Phase 1 is complete. Phase 2 is next. No API signatures have changed.
+Phases 1–3 are complete. Phase 4 is next. No public API signatures have changed.

@@ -857,7 +857,8 @@ createStreamSubscription({ connection, query(streamId), readRows, onRows });
   already delivered.
 - **Shipped (M5):** `subscribeEventRows` binds a view/table/raw query to row handlers, filters rows by
   stream, registers callbacks once so SDK reconnect replay refreshes them, and routes errors to
-  `onError` or rethrows them. `createStreamSubscription` keeps one per-stream query active and ignores
+  `onError`. Without a handler it throws, but SDK 2.16 catches and logs callback throws, so apps
+  should supply `onError`. `createStreamSubscription` keeps one per-stream query active and ignores
   stale callbacks after a switch.
 - The client entry is framework-neutral (no framework, DOM, or Node-only imports); integration-test
   tooling is a separate Node/CLI-only entry (R3).
@@ -1084,7 +1085,7 @@ Each step started only on an explicit go signal; old paths remained valid until 
 | Subscription args are literals | Helpers validate and escape; use table queries for dynamic filters on materialized models. |
 | Stream id ownership | `streamId(prefix, key)` only formats/validates. Client-generated ids need module validation; module-generated ids require a view for discovery because reducers return void. Hybrid command ids are the recommended default. |
 | **Client-shaped events / cross-stream writes** | **Security flaw in the original frontend write path (§18), fixed by M15/R9.** Reducers are public callables; a browser calling a generic append can choose `streamId`, `eventType`, and `data`. The fix removes that surface, sends commands to backend-owned reducers, derives stream ids and events server-side, and authorizes against `ctx.sender`. |
-| Event table growth | Minimal indexes, tiered storage, never delete history; archival is an app decision. |
+| Event table growth | Minimal indexes, `esEvent` uses `no_requirement` tiered storage, never delete history; archival is an app decision. Hot `esStream`/`esHead` stay `required_in_memory`. |
 | Determinism | No clock/RNG/network. `ctx.timestamp`, `ctx.sender`, `ctx.random` only. |
 | Library bundle size | Server entry depends only on `spacetimedb/server`; helpers tree-shakeable. |
 

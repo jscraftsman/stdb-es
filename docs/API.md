@@ -140,6 +140,11 @@ and only for `status: 'appended'`. A throw rolls the append back. Defaults: `max
 The library never updates or deletes `esEvent` rows except through the append path, and it exports no
 public table containing raw events.
 
+`esStream` and `esHead` explicitly set `cachePolicy: 'required_in_memory'`; `esEvent` sets
+`cachePolicy: 'no_requirement'`. SDK 2.16 omits in-memory policies from the emitted module definition
+because they are the default there; the explicit declarations remain important for SDK 3.0, where the
+default changes to `no_requirement`. See `docs/usage-guide.md` §1.3a for app-table guidance.
+
 | Function | Purpose | Inputs | Output / throws |
 | --- | --- | --- | --- |
 | `esError(code, detail)` | Throws a reducer-visible store error | `code: EsErrorCode`, `detail: string` | Throws `SenderError` with message `CODE: detail` |
@@ -366,8 +371,11 @@ handle on `select`, ignores late callbacks from that handle, and passes the sele
 
 Callbacks are registered once. With automatic reconnect enabled, the SDK replays the retained query
 and invokes `onApplied` again, so `onRows` receives refreshed rows without a second `subscribe()`
-call. `onError` receives subscription and reducer errors; if omitted, the error is rethrown rather
-than swallowed. `unsubscribeThen` delegates to the SDK handle when available.
+call. `onError` receives subscription and reducer errors; the SDK's optional second `error` argument
+is preferred when present, otherwise the error comes from `ctx.event`. When `onError` is omitted the
+bridge throws, but SpacetimeDB 2.16 catches callback throws and logs them instead of letting them
+propagate, so supply a handler when the app needs deterministic error handling. `unsubscribeThen`
+delegates to the SDK handle when available.
 
 Subscription and connection lifetimes are separate. `unsubscribe()`/`unsubscribeThen()` remove only
 the retained query for that handle; the app or framework still owns the generated `DbConnection` and

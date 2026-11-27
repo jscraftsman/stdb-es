@@ -12,9 +12,22 @@ type Row = { streamId: string; value: number };
 type Ctx = { rows: Row[] };
 type ErrorCtx = { event?: Error };
 
+/** Mirrors the 2.16 SDK's one-argument public `onError` callback type. */
+type SdkLikeBuilder = {
+  onApplied(cb: (ctx: Ctx) => void): SdkLikeBuilder;
+  onError(cb: (ctx: ErrorCtx) => void): SdkLikeBuilder;
+  subscribe(query: string | string[]): {
+    unsubscribe(): void;
+    isActive?(): boolean;
+    isEnded?(): boolean;
+  };
+};
+
+type SdkLikeConnection = { subscriptionBuilder(): SdkLikeBuilder };
+
 type BuilderState = {
   applied: Array<(ctx: Ctx) => void>;
-  errors: Array<(ctx: ErrorCtx) => void>;
+  errors: Array<(ctx: ErrorCtx, error?: Error) => void>;
   queries: string[][];
   unsubscribes: number;
 };
@@ -70,6 +83,13 @@ function fakeConnection() {
 const row = (streamId: string, value: number): Row => ({ streamId, value });
 
 describe('subscribeEventRows', () => {
+  it('accepts SDK-shaped one-argument onError builders', () => {
+    const sdkConnection = {} as SdkLikeConnection;
+    const connection: SubscriptionConnection<Ctx, ErrorCtx> = sdkConnection;
+
+    expect(connection).toBe(sdkConnection);
+  });
+
   it('binds a view query to a pruned row handler', () => {
     const { connection, builders } = fakeConnection();
     const onRows = vi.fn();
@@ -143,7 +163,26 @@ describe('subscribeEventRows', () => {
     expect(onError).toHaveBeenCalledWith(error, ctx);
   });
 
-  it('rethrows errors when no onError handler is supplied', () => {
+  it('prefers the SDK error argument and falls back to ctx.event', () => {
+    const { connection, builders } = fakeConnection();
+    const onError = vi.fn();
+    subscribeEventRows<Row, Ctx, ErrorCtx>({
+      connection,
+      query: { table: 'counter_summary' },
+      readRows: (ctx) => ctx.rows,
+      onRows: () => undefined,
+      onError,
+    });
+
+    const ctx: ErrorCtx = { event: new Error('from ctx') };
+    const sdkError = new Error('from sdk');
+    builders[0]!.errors[0]!(ctx, sdkError);
+
+    expect(onError).toHaveBeenCalledWith(sdkError, ctx);
+    expect(onError.mock.calls[0]?.[0]).not.toBe(ctx.event);
+  });
+
+  it('throws from its callback when no onError handler is supplied', () => {
     const { connection, builders } = fakeConnection();
     subscribeEventRows<Row, Ctx, ErrorCtx>({
       connection,

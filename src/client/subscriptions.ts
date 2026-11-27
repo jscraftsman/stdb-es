@@ -46,8 +46,9 @@ export type EventSubscriptionOptions<TRow, TContext = any, TErrorContext = any> 
   readRows: (ctx: TContext) => Iterable<TRow>;
   onRows: (rows: readonly TRow[], ctx: TContext) => void;
   /**
-   * Receives subscription and failed-reducer errors. When omitted, the error is
-   * rethrown instead of being swallowed.
+   * Receives subscription and failed-reducer errors. When omitted, the bridge
+   * throws. SpacetimeDB 2.16 catches callback throws and logs them, so supply
+   * this handler when the app needs deterministic error handling.
    */
   onError?: (error: Error, ctx: TErrorContext) => void;
   /** Keeps only rows belonging to this stream. */
@@ -83,10 +84,11 @@ function queryStrings(query: SubscriptionQuery): string[] {
   return queries;
 }
 
-function errorFromContext(ctx: unknown): Error {
+function errorFromContext(ctx: unknown, sdkError?: unknown): Error {
+  if (sdkError instanceof Error) return sdkError;
   const event = (ctx as { event?: unknown } | null)?.event;
   if (event instanceof Error) return event;
-  return new Error('Subscription failed', { cause: event });
+  return new Error('Subscription failed', { cause: sdkError ?? event });
 }
 
 function defaultRowStreamId<TRow>(row: TRow): string | undefined {
@@ -132,8 +134,8 @@ export function subscribeEventRows<TRow, TContext = any, TErrorContext = any>(
     options.onRows(rows, ctx);
   });
 
-  builder.onError((ctx: TErrorContext) => {
-    const error = errorFromContext(ctx);
+  builder.onError((ctx: TErrorContext, sdkError?: Error) => {
+    const error = errorFromContext(ctx, sdkError);
     if (options.onError) {
       options.onError(error, ctx);
       return;
