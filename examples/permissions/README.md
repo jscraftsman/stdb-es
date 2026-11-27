@@ -89,6 +89,29 @@ Web environment overrides: `VITE_STDB_URI` (default `ws://localhost:3000`),
 `VITE_STDB_DATABASE` (default `stdb-es-permissions`), and `VITE_GOOGLE_CLIENT_ID` (defaults to the
 configured client id above).
 
+## Tests
+
+Offline unit tests and live integration tests are separate commands:
+
+```bash
+npm run example:permissions:test
+npm run example:permissions:test:integration
+```
+
+The integration command publishes the module to a disposable in-memory SpacetimeDB server. It covers
+anonymous C1 reads/writes and idempotency, anonymous C2/C3 rejection, and saved server-issued token
+reconnects without any Google credentials.
+
+The positive Google path needs a fresh ID token and is skipped in CI:
+
+```bash
+PERMISSIONS_GOOGLE_ID_TOKEN='eyJ...' npm run example:permissions:test:integration
+```
+
+The token must be issued for the configured client id and include an `email` claim. Capture it from
+the GIS sign-in callback in a browser, use it immediately because Google ID tokens expire in about an
+hour, and never commit it.
+
 ## Try the authorization matrix
 
 - Before signing in, only the C1 card is visible. Increment, decrement, or reset it anonymously.

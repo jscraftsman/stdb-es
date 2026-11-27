@@ -119,8 +119,8 @@ popup mode and needs no redirect URI or client secret. The example is configured
   sender identity and counter type.
 - Unit tests use `TestAuth.fromJwtPayload` to cover Google-valid and invalid claim cases offline.
 - Automated live integration tests require no Google credentials: they cover C1 writes and C2/C3
-  rejection using CLI identities. An opt-in live check with real Google ID tokens covers the positive
-  authenticated path and private-view isolation; it is skipped in CI.
+  rejection from anonymous identities. An opt-in live check with a real Google ID token covers the
+  positive authenticated path and private-view isolation; it is skipped in CI.
 
 ## Phases
 
@@ -133,7 +133,7 @@ popup mode and needs no redirect URI or client secret. The example is configured
 - [x] Phase 3 — Unit tests: add module harness tests for issuer/audience validation, C1/C2/C3 write
       rules, idempotency, and view isolation, plus client tests for command payloads and token
       handling.
-- [ ] Phase 4 — Integration tests: add a separate Node-only suite for the live authorization matrix,
+- [x] Phase 4 — Integration tests: add a separate Node-only suite for the live authorization matrix,
       including the opt-in real-Google-token check.
 - [ ] Phase 5 — Final consistency: add CI gates and docs links, run the full verification set, and
       close this record as `completed`.
@@ -205,7 +205,24 @@ popup mode and needs no redirect URI or client secret. The example is configured
   connection tokens only while signed out. Display-field decoding is also covered.
 - Test-only support lives inside the example; no package source or public API signatures changed.
 
+## Phase 4 verification
+
+- `npm run example:permissions:test:integration` passes against a disposable local server: 4 live
+  tests pass and the real-Google-token test is skipped unless explicitly supplied.
+- The suite lives only in `examples/permissions/integration/` with its own Vitest config; it imports
+  `stdb-es/testing/integration` and does not affect the framework-neutral browser entry points.
+- Live checks cover anonymous C1 subscription reads, increment/decrement/reset, replayed command ids,
+  public event projection, anonymous C2/C3 rejection, and saved server-issued token reuse.
+- Saved server-issued tokens work for C1 but are rejected by owned C2/C3 reducers; an invalid token is
+  also rejected by C1 without changing the value.
+- The opt-in Google test requires `PERMISSIONS_GOOGLE_ID_TOKEN`, skips when `CI` is set, verifies
+  C2 increment/decrement/reset with the server-supplied owner email, verifies C3 private-summary
+  isolation, and confirms another identity cannot write the Google-owned C2 counter.
+- `examples/permissions/README.md` documents both test commands, how to capture and use a fresh ID
+  token, and that tokens must never be committed.
+- No package source, public API, or generated binding changed in this phase.
+
 ## Current state
 
-Phase 3 unit tests are ready for review. Phase 4 integration tests are next. No public API signatures
-have changed.
+Phase 4 integration tests are ready for review. Phase 5 final consistency is next. No public API
+signatures have changed.
