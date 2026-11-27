@@ -130,7 +130,7 @@ popup mode and needs no redirect URI or client secret. The example is configured
       helpers, command reducers, public/private views, and module configuration. No tests yet.
 - [x] Phase 2 — Full-stack wiring: add the React client, Google sign-in flow, generated bindings,
       root npm scripts/workspaces/lockfile, and the example README with the Google Console guide.
-- [ ] Phase 3 — Unit tests: add module harness tests for issuer/audience validation, C1/C2/C3 write
+- [x] Phase 3 — Unit tests: add module harness tests for issuer/audience validation, C1/C2/C3 write
       rules, idempotency, and view isolation, plus client tests for command payloads and token
       handling.
 - [ ] Phase 4 — Integration tests: add a separate Node-only suite for the live authorization matrix,
@@ -187,6 +187,25 @@ popup mode and needs no redirect URI or client secret. The example is configured
 - Root scripts and `package-lock.json` include the new workspace; the example README was added to
   the package `files` list. No package source or public API signatures changed.
 
+## Phase 3 verification
+
+- `npm run example:permissions:test` passes: 18 module tests and 9 web tests.
+- Module auth tests cover anonymous first connection, saved server-issued anonymous reconnect tokens,
+  invalid issuer, invalid audience, missing subject, sender/JWT identity mismatch, and idempotent
+  Google-identity bootstrapping of C2/C3 rows with the verified email.
+- Module reducer tests cover anonymous C1 increment/decrement/reset, event ids and payloads, command
+  id replay, invalid amounts and command ids, owner-only C2/C3 writes, issuer/audience rejection,
+  the authoritative owner-row check, and isolation of identical command ids across users.
+- Module view tests cover public C1/C2 rows with owner email and no C3 rows, per-caller C3 summary,
+  public event access to C1/C2 only, and private event access to the caller's C3 only.
+- Web command tests cover all nine generated reducer bindings, generated command ids, intent-only
+  payloads, verbatim retry envelopes, and rejected-command propagation.
+- Web token tests cover separate localStorage keys for Google ID and anonymous connection tokens,
+  sign-out clearing both, first-use of the Google credential for the connection, and persistence of
+  connection tokens only while signed out. Display-field decoding is also covered.
+- Test-only support lives inside the example; no package source or public API signatures changed.
+
 ## Current state
 
-The Phase 2 revision is ready for review. Phase 3 is next. No public API signatures have changed.
+Phase 3 unit tests are ready for review. Phase 4 integration tests are next. No public API signatures
+have changed.

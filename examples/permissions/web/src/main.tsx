@@ -6,6 +6,8 @@ import {
   DATABASE_NAME,
   readAnonymousToken,
   readGoogleCredential,
+  selectConnectionToken,
+  shouldPersistAnonymousToken,
   SPACETIMEDB_URI,
   writeAnonymousToken,
 } from './config.js';
@@ -13,17 +15,18 @@ import { DbConnection } from './generated/index.js';
 import './styles.css';
 
 const googleCredential = readGoogleCredential();
+const anonymousToken = readAnonymousToken();
 
 const connectionBuilder = DbConnection.builder()
   .withUri(SPACETIMEDB_URI)
   .withDatabaseName(DATABASE_NAME)
   // No Google credential means an anonymous connection, which is enough for C1.
-  .withToken(googleCredential ?? readAnonymousToken())
+  .withToken(selectConnectionToken(googleCredential, anonymousToken))
   .withAutomaticReconnect()
   .onConnect((_connection, _identity, token) => {
     // Never persist a Google-derived token as the anonymous token: sign-out
     // must actually return to an anonymous identity.
-    if (googleCredential === undefined) writeAnonymousToken(token);
+    if (shouldPersistAnonymousToken(googleCredential)) writeAnonymousToken(token);
   });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

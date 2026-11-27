@@ -34,3 +34,18 @@ export function clearAuthTokens(): void {
   localStorage.removeItem(GOOGLE_CREDENTIAL_KEY);
   localStorage.removeItem(ANONYMOUS_TOKEN_KEY);
 }
+
+/** Chooses the credential used to build the SpacetimeDB connection. */
+export function selectConnectionToken(
+  googleCredential: string | undefined,
+  anonymousToken: string | undefined,
+): string | undefined {
+  return googleCredential ?? anonymousToken;
+}
+
+/** Only anonymous connections may persist the server-issued connection token. */
+export function shouldPersistAnonymousToken(
+  googleCredential: string | undefined,
+): boolean {
+  return googleCredential === undefined;
+}
