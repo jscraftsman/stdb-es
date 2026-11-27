@@ -1,9 +1,8 @@
 # Permissions example (M16)
 
-**Status: on-going**
+**Status: completed**
 
-> Active spec-change record. It may be updated while the work is in progress. When all phases are
-> complete, change the status to `completed` and treat it as readonly historical data.
+> Completed spec-change record. All phases are done; treat this as readonly historical data.
 
 ## Scope
 
@@ -135,7 +134,7 @@ popup mode and needs no redirect URI or client secret. The example is configured
       handling.
 - [x] Phase 4 — Integration tests: add a separate Node-only suite for the live authorization matrix,
       including the opt-in real-Google-token check.
-- [ ] Phase 5 — Final consistency: add CI gates and docs links, run the full verification set, and
+- [x] Phase 5 — Final consistency: add CI gates and docs links, run the full verification set, and
       close this record as `completed`.
 
 ## Phase 0 verification
@@ -222,7 +221,25 @@ popup mode and needs no redirect URI or client secret. The example is configured
   token, and that tokens must never be committed.
 - No package source, public API, or generated binding changed in this phase.
 
+## Phase 5 verification
+
+- CI now typechecks the permissions module and web app, runs both offline permissions unit suites, and
+  runs the live permissions integration suite against the disposable local server. The real Google
+  token check remains opt-in because CI has no credential.
+- `README.md` links the permissions guide from the documentation list and runnable examples, lists its
+  test and start commands, and includes its typecheck in the CLI note. No new core API is documented.
+- `docs/event-sourcing-plan.md` now marks the M16 scope change as completed and links the closed
+  record; the plan no longer calls M16 planned or active.
+- `docs/API.md` and `docs/usage-guide.md` were checked for a permissions-related documentation gap.
+  None was found: the example consumes the existing command, table, view, and integration-kit
+  contracts and introduces no shipped export.
+- Final local gates passed: `npm test` (143 library tests), `npm run build`, `npm run typecheck`,
+  `npm run check:pack`, root example typechecks, `example:permissions:typecheck`,
+  `example:permissions:test` (18 module + 9 web tests), both other example offline suites, web build,
+  module build, and `example:permissions:test:integration` (4 live tests plus 1 opt-in skip).
+- `CHANGELOG.md` was not modified and nothing was published.
+
 ## Current state
 
-Phase 4 integration tests are ready for review. Phase 5 final consistency is next. No public API
-signatures have changed.
+All five phases are complete. The M16 permissions example is closed; this record is readonly historical
+data. No public API signatures changed.

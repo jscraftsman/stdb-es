@@ -8,7 +8,7 @@ SpacetimeDB is the whole backend. The module is the application server, reducers
 and views are the client read path. `stdb-es` adds the event-sourcing half without asking you to run
 a second database, a message broker, or a separate read-model store.
 
-> **Status: 0.4.3, pre-release.** The API may change. Requires `spacetimedb >= 2.16.3 < 3`.
+> **Status: 0.4.4, pre-release.** The API may change. Requires `spacetimedb >= 2.16.3 < 3`.
 > SpacetimeDB 2.16.x compatibility work is complete; React and Phaser are reference UIs, not package
 > APIs. JSON event payloads are the only implemented mode; typed-enum payloads are designed but not
 > shipped yet. TypeScript server modules only.
@@ -25,6 +25,8 @@ a second database, a message broker, or a separate read-model store.
 - [SQL recipes](docs/sql-recipes.md) — owner-only inspection and repair queries.
 - [React counter](examples/react-counter/README.md) — runnable full-stack set.
 - [Phaser counter](examples/phaser-counter/README.md) — the same contract with a Phaser scene.
+- [Permissions counter](examples/permissions/README.md) — Google OIDC sign-in with public/private
+  counters.
 - [Design record](docs/event-sourcing-plan.md) — decisions, rejected alternatives, and milestones.
 - [Publishing guide](docs/publishing.md) — manual npm release steps and GitHub Actions setup.
 
@@ -785,18 +787,22 @@ npm run smoke         # publish the React counter set and run the live smoke tes
 npm run smoke:integration # dogfood stdb-es/testing/integration on a disposable server
 npm run example:react-counter:test:integration # consumer-style integration tests for React
 npm run example:phaser-counter:test:integration # consumer-style integration tests for Phaser
+npm run example:permissions:test             # permissions module and web unit tests
+npm run example:permissions:test:integration # live permissions matrix; Google token check is opt-in
 ```
 
-To run a full-stack reference UI (React or Phaser + module) against the already-running local server:
+To run a full-stack reference UI (React, Phaser, or permissions + module) against the already-running
+local server:
 
 ```bash
 npm run example:react-counter:start  # publishes, generates bindings, starts Vite on :5173
 npm run example:phaser-counter:start # same contract, Phaser scene, Vite on :5174
+npm run example:permissions:start   # auth example, Vite on :5175; see its README for Google setup
 ```
 
 Each full-stack publish preserves existing data. Use the matching `publish-clean` script
-(`example:react-counter:publish-clean` or `example:phaser-counter:publish-clean`) only for a
-deliberate scratch reset with `--delete-data=always`.
+(`example:react-counter:publish-clean`, `example:phaser-counter:publish-clean`, or
+`example:permissions:publish-clean`) only for a deliberate scratch reset with `--delete-data=always`.
 
 The smoke and full-stack commands assume a local server on `127.0.0.1:3000`:
 
@@ -806,13 +812,13 @@ spacetime start --in-memory --non-interactive   # 127.0.0.1:3000
 
 `spacetime build` may print `tsc not found in node_modules` because npm workspaces hoist TypeScript
 to the repository root, so the CLI cannot find a per-module `tsc`. The build still succeeds, but the
-CLI has skipped its own type check. `npm run example:react-counter:typecheck` and
-`npm run example:phaser-counter:typecheck` run that check explicitly and are part of each set's
-build/publish/start scripts.
+CLI has skipped its own type check. `npm run example:react-counter:typecheck`,
+`npm run example:phaser-counter:typecheck`, and `npm run example:permissions:typecheck` run that check
+explicitly and are part of each set's build/publish/start scripts.
 
-Example sets use a top-level directory under `examples/`; the runnable sets are `examples/react-counter`
-and `examples/phaser-counter`, and there is no `sets/` tier. The cleanup is complete and recorded in
-[§15.2 of the design record](docs/event-sourcing-plan.md).
+Example sets use a top-level directory under `examples/`; the runnable sets are `examples/react-counter`,
+`examples/phaser-counter`, and `examples/permissions`, and there is no `sets/` tier. The cleanup is
+complete and recorded in [§15.2 of the design record](docs/event-sourcing-plan.md).
 
 The smoke republishes `stdb-es-counter-with-frontend`, drives the generated command reducers, and
 asserts against `es_stream` plus the app-owned names in `TABLES_COUNTER.state` and
@@ -822,9 +828,10 @@ an idempotent replay, non-owner rejection, and a cache row that is deleted and t
 The runnable full-stack sets live in
 [`examples/react-counter`](examples/react-counter/README.md) and
 [`examples/phaser-counter`](examples/phaser-counter/README.md). They share the same module and
-`stdb-es` client contract; only the UI and lifecycle wiring differ. The design record, including the
-migration spike results and the rejected alternatives, is in
-[docs/event-sourcing-plan.md](docs/event-sourcing-plan.md).
+`stdb-es` client contract; only the UI and lifecycle wiring differ. The
+[permissions example](examples/permissions/README.md) reuses the counter domain to demonstrate Google
+OIDC sign-in and module-side authorization. The design record, including the migration spike results
+and the rejected alternatives, is in [docs/event-sourcing-plan.md](docs/event-sourcing-plan.md).
 
 ## License
 

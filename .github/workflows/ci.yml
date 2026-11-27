@@ -96,9 +96,13 @@ jobs:
           npm run typecheck
           npm run example:react-counter:typecheck
           npm run example:phaser-counter:typecheck
+          npm run example:permissions:typecheck
 
       - name: Unit tests
         run: npm test
+
+      - name: Permissions example unit tests
+        run: npm run example:permissions:test
 
       - name: Fresh-app package check
         run: npm run check:pack
@@ -135,6 +139,10 @@ jobs:
 
       - name: Phaser counter example integration tests
         run: npm run example:phaser-counter:test:integration
+
+      # CI leaves PERMISSIONS_GOOGLE_ID_TOKEN unset, so the real-Google-token check stays opt-in.
+      - name: Permissions example integration tests
+        run: npm run example:permissions:test:integration
 
       - name: Stop disposable local server
         if: always()
