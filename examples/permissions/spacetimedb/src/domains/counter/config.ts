@@ -6,4 +6,4 @@
  * match `VITE_GOOGLE_CLIENT_ID` in the reference client.
  */
 export const GOOGLE_ISSUER = 'https://accounts.google.com';
-export const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+export const GOOGLE_CLIENT_ID = '407348267584-b9dmdsvdbuiohlr5l459lbib0tkvbfed.apps.googleusercontent.com';

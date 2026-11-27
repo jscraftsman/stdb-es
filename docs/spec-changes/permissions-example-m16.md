@@ -58,8 +58,9 @@ generic append path is exposed.
 
 ## Google Cloud Console setup
 
-This is the setup guide the example README will carry. It uses the Sign In With Google button in
-popup mode and needs no redirect URI or client secret.
+This is the setup guide the example README carries. It uses the Sign In With Google button in
+popup mode and needs no redirect URI or client secret. The example is configured for client id
+`407348267584-b9dmdsvdbuiohlr5l459lbib0tkvbfed.apps.googleusercontent.com`.
 
 1. Open the [Google Cloud Console credentials page](https://console.cloud.google.com/apis/credentials)
    and create or select a project, for example `stdb-es-permissions-local`.
@@ -109,7 +110,7 @@ popup mode and needs no redirect URI or client secret.
       counter contract, Google setup flow, and phase boundaries.
 - [x] Phase 1 — Backend module: add `examples/permissions/spacetimedb/` with the schema, auth
       helpers, command reducers, public/private views, and module configuration. No tests yet.
-- [ ] Phase 2 — Full-stack wiring: add the React client, Google sign-in flow, generated bindings,
+- [x] Phase 2 — Full-stack wiring: add the React client, Google sign-in flow, generated bindings,
       root npm scripts/workspaces/lockfile, and the example README with the Google Console guide.
 - [ ] Phase 3 — Unit tests: add module harness tests for issuer/audience validation, C1/C2/C3 write
       rules, idempotency, and view isolation, plus client tests for command payloads and token
@@ -141,6 +142,21 @@ popup mode and needs no redirect URI or client secret.
   stream type stored in the event catalogue.
 - No test files were added in this phase, and no public API signatures changed.
 
+## Phase 2 verification
+
+- `npm run example:permissions:typecheck` passes for both module and web.
+- `npm --prefix examples/permissions/web run build` produces a Vite bundle.
+- `npm run example:permissions:build` builds the package and the module with CLI 2.16.3.
+- Bindings were regenerated with CLI 2.16.3 and committed under `examples/permissions/web/src/generated`;
+  private tables were skipped as intended.
+- The configured Google client id is present in both module configuration and the web environment
+  template. The consent-screen/origin setup is documented in `examples/permissions/README.md`.
+- The UI uses `useTable(tables.publicSummary)` and `useTable(tables.privateSummary)`, binds all nine
+  generated reducers through `createCommandClient`, and stores the Google credential for the
+  connection builder via a reload after sign-in.
+- Root scripts and `package-lock.json` include the new workspace; the example README was added to
+  the package `files` list. No package source or public API signatures changed.
+
 ## Current state
 
-Phase 1 is complete. Phase 2 is next. No public API signatures have changed.
+Phase 2 is complete. Phase 3 is next. No public API signatures have changed.
