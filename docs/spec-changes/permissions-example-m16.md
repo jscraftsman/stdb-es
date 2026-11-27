@@ -18,6 +18,12 @@ work, not a new core package feature.
 - `.`, `./client`, `stdb-es/server`, and the public API signatures remain unchanged.
 - `stdb-es/testing/integration` remains Node/CLI-only.
 - Generated bindings are committed from CLI 2.16.3 and never hand-written.
+- The reference UI lists all public counters: one C1 card plus one C2 card per authenticated user.
+  C2/C3 cards are hidden while logged out; C1 controls stay usable anonymously.
+- Logged-in users see every C2 card but only their own card has enabled write controls. Module-side
+  ownership checks remain authoritative.
+- C1, C2, and C3 cards use different accents while keeping the same value, amount, and action
+  elements.
 - This record does not touch `CHANGELOG.md`; release notes stay maintainer-owned.
 
 ## Counter contract
@@ -35,8 +41,13 @@ generic append path is exposed.
 ### Read model plan
 
 - Private materialized tables hold one state row per stream. Clients never subscribe to them.
+- State rows carry optional owner identity and email. C1 has neither; C2 and C3 rows are stamped from
+  the verified JWT so public C2 cards can name their owner without reading the private owner table.
 - A public anonymous view exposes C1 and C2 rows.
 - A per-caller view exposes only the caller's C3 row.
+- `clientConnected` creates the single zero-valued C1 row and, for valid Google identities, the
+  caller's zero-valued C2 and C3 rows. The number of public C2 cards therefore tracks the number of
+  authenticated users, not the number who happened to click a button first.
 - A public parameterized event view allows only C1 and C2 streams.
 - A separate per-caller parameterized event view allows only the caller's C3 stream.
 - No view exposes all event streams.
@@ -154,9 +165,16 @@ popup mode and needs no redirect URI or client secret. The example is configured
 - The UI uses `useTable(tables.publicSummary)` and `useTable(tables.privateSummary)`, binds all nine
   generated reducers through `createCommandClient`, and stores the Google credential for the
   connection builder via a reload after sign-in.
+- The Phase 2 revision adds owner identity/email to the state read model and bootstraps zero-valued
+  C1/C2/C3 rows on connect. The UI renders every public row: one themed C1 card plus one themed C2
+  card per signed-in owner, showing the server-supplied owner email.
+- C2 cards not owned by the current identity have their increment/decrement/reset buttons disabled;
+  C3 and all C2 cards are hidden while signed out. The module still rejects unauthorized writes.
+- Bindings were regenerated after the read-model change with CLI 2.16.3; private tables remain
+  skipped.
 - Root scripts and `package-lock.json` include the new workspace; the example README was added to
   the package `files` list. No package source or public API signatures changed.
 
 ## Current state
 
-Phase 2 is complete. Phase 3 is next. No public API signatures have changed.
+The Phase 2 revision is ready for review. Phase 3 is next. No public API signatures have changed.

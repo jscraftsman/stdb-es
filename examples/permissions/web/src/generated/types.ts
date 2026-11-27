@@ -22,6 +22,8 @@ export const CounterState = __t.object("CounterState", {
   counterKind: __t.string(),
   version: __t.u32(),
   value: __t.i64(),
+  owner: __t.option(__t.identity()),
+  ownerEmail: __t.option(__t.string()),
 });
 export type CounterState = __Infer<typeof CounterState>;
 

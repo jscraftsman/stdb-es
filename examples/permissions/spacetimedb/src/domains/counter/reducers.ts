@@ -7,7 +7,7 @@ import {
 } from 'stdb-es/server';
 import { spacetimedb, type Context } from '../../schema.js';
 import { evolve, replayValue } from './aggregate.js';
-import { assertValidGoogleTokenIfPresent } from './auth.js';
+import { assertValidGoogleTokenIfPresent, googleEmail } from './auth.js';
 import {
   COUNTER_KIND,
   EVENT_TYPES,
@@ -62,6 +62,45 @@ function ensureOwner(ctx: Ctx, stream: string, kind: CounterKind): void {
   ctx.db.counterOwner.insert({ streamId: stream, counterKind: kind, owner: ctx.sender });
 }
 
+function ownershipFields(ctx: Ctx, kind: CounterKind): {
+  owner: typeof ctx.sender | undefined;
+  ownerEmail: string | undefined;
+} {
+  if (kind === COUNTER_KIND.global) return { owner: undefined, ownerEmail: undefined };
+  return { owner: ctx.sender, ownerEmail: googleEmail(ctx) };
+}
+
+function stateRow(
+  ctx: Ctx,
+  stream: string,
+  kind: CounterKind,
+  version: number,
+  value: bigint,
+) {
+  return {
+    streamId: stream,
+    counterKind: kind,
+    version,
+    value,
+    ...ownershipFields(ctx, kind),
+  };
+}
+
+/** Creates an owned read-model row before the user's first command. */
+function ensureOwnedState(ctx: Ctx, kind: CounterKind): void {
+  const stream = counterStream(ctx, kind);
+  ensureOwner(ctx, stream, kind);
+  if (ctx.db.counterState.streamId.find(stream)) return;
+  ctx.db.counterState.insert(stateRow(ctx, stream, kind, 0, 0n));
+}
+
+/** C1 always has exactly one read-model row, even before a command arrives. */
+function ensureGlobalState(ctx: Ctx): void {
+  const stream = counterStream(ctx, COUNTER_KIND.global);
+  if (ctx.db.counterState.streamId.find(stream)) return;
+  ctx.db.counterState.insert(stateRow(ctx, stream, COUNTER_KIND.global, 0, 0n));
+}
+
 /** Runs inside the append transaction, after the new events are visible. */
 function updateState(ctx: Ctx, result: AppendResult, kind: CounterKind): void {
   const stream = result.rows[0]?.streamId;
@@ -69,23 +108,15 @@ function updateState(ctx: Ctx, result: AppendResult, kind: CounterKind): void {
 
   const current = ctx.db.counterState.streamId.find(stream);
   if (!current) {
-    ctx.db.counterState.insert({
-      streamId: stream,
-      counterKind: kind,
-      version: result.version,
-      value: replayValue(ctx, stream),
-    });
+    ctx.db.counterState.insert(
+      stateRow(ctx, stream, kind, result.version, replayValue(ctx, stream)),
+    );
     return;
   }
 
   let value = current.value;
   for (const row of result.rows) value = evolve(value, JSON.parse(row.data) as CounterEvent);
-  ctx.db.counterState.streamId.update({
-    streamId: stream,
-    counterKind: kind,
-    version: result.version,
-    value,
-  });
+  ctx.db.counterState.streamId.update(stateRow(ctx, stream, kind, result.version, value));
 }
 
 function appendCommand(
@@ -187,4 +218,9 @@ export const resetPrivateMine = spacetimedb.reducer(plainCommand, (ctx, command)
  */
 export const onConnect = spacetimedb.clientConnected((ctx) => {
   assertValidGoogleTokenIfPresent(ctx);
+  ensureGlobalState(ctx);
+  if (ctx.senderAuth.hasJWT) {
+    ensureOwnedState(ctx, COUNTER_KIND.publicOwned);
+    ensureOwnedState(ctx, COUNTER_KIND.privateOwned);
+  }
 });

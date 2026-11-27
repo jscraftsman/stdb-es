@@ -3,7 +3,7 @@ import { makeStreamView } from 'stdb-es/server';
 import { counterState, spacetimedb, type Context } from '../../schema.js';
 import { COUNTER_KIND, STREAM_TYPES, TABLES } from './constants.js';
 
-/** World-readable C1 and C2 state; C3 state is never included. */
+/** World-readable C1 and C2 state; C2 rows carry owner identity and email. C3 is never included. */
 export const publicSummary = spacetimedb.anonymousView(
   { name: TABLES.publicSummary, public: true },
   t.array(counterState.rowType),

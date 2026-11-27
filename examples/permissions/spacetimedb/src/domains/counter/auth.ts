@@ -30,6 +30,12 @@ export function assertGoogleSender(ctx: Context): void {
   requireGoogleClaims(ctx);
 }
 
+/** Returns the verified token's email for display in the public read model. */
+export function googleEmail(ctx: Context): string | undefined {
+  const email = requireGoogleClaims(ctx).fullPayload.email;
+  return typeof email === 'string' && email.length > 0 ? email : undefined;
+}
+
 /** Anonymous connections stay allowed; a supplied token must still be correct. */
 export function assertValidGoogleTokenIfPresent(ctx: Context): void {
   if (!ctx.senderAuth.hasJWT) return;

@@ -15,4 +15,6 @@ export default __t.row({
   counterKind: __t.string().name("counter_kind"),
   version: __t.u32(),
   value: __t.i64(),
+  owner: __t.option(__t.identity()),
+  ownerEmail: __t.option(__t.string()).name("owner_email"),
 });

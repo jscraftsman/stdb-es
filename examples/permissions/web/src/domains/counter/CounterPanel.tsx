@@ -1,22 +1,28 @@
 import { useState } from 'react';
+import type { Identity } from 'spacetimedb';
 
 export type CounterRow = {
   streamId: string;
   counterKind: string;
   version: number;
   value: bigint;
+  owner?: Identity;
+  ownerEmail?: string;
 };
+
+export type CounterAccent = 'global' | 'publicOwned' | 'privateOwned';
 
 type Props = {
   title: string;
   description: string;
-  kind: string;
-  rows: readonly CounterRow[];
+  accent: CounterAccent;
+  row: CounterRow | undefined;
   ready: boolean;
   onIncrement: (by: number) => Promise<unknown>;
   onDecrement: (by: number) => Promise<unknown>;
   onReset: () => Promise<unknown>;
   disabled?: boolean;
+  readOnly?: boolean;
   note?: string;
 };
 
@@ -30,23 +36,29 @@ function errorMessage(cause: unknown): string {
   return `Command rejected: ${detail}`;
 }
 
+function ownerLabel(row: CounterRow | undefined): string {
+  if (!row) return 'Owner pending';
+  if (row.ownerEmail) return `Owner ${row.ownerEmail}`;
+  if (row.owner) return `Owner ${row.owner.toHexString()}`;
+  return 'Owner app-wide';
+}
+
 export function CounterPanel({
   title,
   description,
-  kind,
-  rows,
+  accent,
+  row,
   ready,
   onIncrement,
   onDecrement,
   onReset,
   disabled = false,
+  readOnly = false,
   note,
 }: Props) {
   const [by, setBy] = useState(1);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-
-  const row = rows.find((candidate) => candidate.counterKind === kind);
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
@@ -62,14 +74,15 @@ export function CounterPanel({
   }
 
   return (
-    <section className="panel">
+    <section className={`panel panel--${accent}`}>
       <h2>{title}</h2>
       <p className="description">{description}</p>
       <p className="value" aria-live="polite">
         {ready ? String(row?.value ?? 0n) : 'Loading…'}
       </p>
       <p className="meta">
-        {row ? `version ${row.version}` : 'No state row yet'} · stream is module-derived
+        {ownerLabel(row)} · {row ? `version ${row.version}` : 'no state row yet'} · stream is
+        module-derived
       </p>
 
       <label>
@@ -83,17 +96,26 @@ export function CounterPanel({
       </label>
 
       <div className="actions">
-        <button disabled={busy || disabled} onClick={() => run(() => onIncrement(by))}>
+        <button
+          disabled={busy || disabled || readOnly}
+          onClick={() => run(() => onIncrement(by))}
+        >
           Increment
         </button>
-        <button disabled={busy || disabled} onClick={() => run(() => onDecrement(by))}>
+        <button
+          disabled={busy || disabled || readOnly}
+          onClick={() => run(() => onDecrement(by))}
+        >
           Decrement
         </button>
-        <button disabled={busy || disabled} onClick={() => run(onReset)}>
+        <button disabled={busy || disabled || readOnly} onClick={() => run(onReset)}>
           Reset
         </button>
       </div>
 
+      {readOnly ? (
+        <p className="note">Read-only: this counter belongs to another Google account.</p>
+      ) : null}
       {note ? <p className="note">{note}</p> : null}
       {message ? <p role="status">{message}</p> : null}
     </section>

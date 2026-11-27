@@ -39,15 +39,39 @@ header p {
 }
 
 .panel {
+  --accent: #2563eb;
+  --accent-border: #bfdbfe;
+  --accent-soft: #eff6ff;
+
   padding: 1.25rem;
-  border: 1px solid #d7dfe8;
+  border: 1px solid var(--accent-border);
+  border-top: 4px solid var(--accent);
   border-radius: 12px;
-  background: white;
+  background: linear-gradient(180deg, var(--accent-soft), white 7rem);
   box-shadow: 0 4px 16px rgb(24 33 47 / 6%);
+}
+
+.panel--global {
+  --accent: #2563eb;
+  --accent-border: #bfdbfe;
+  --accent-soft: #eff6ff;
+}
+
+.panel--publicOwned {
+  --accent: #047857;
+  --accent-border: #a7f3d0;
+  --accent-soft: #ecfdf5;
+}
+
+.panel--privateOwned {
+  --accent: #7c3aed;
+  --accent-border: #ddd6fe;
+  --accent-soft: #f5f3ff;
 }
 
 .panel h2 {
   margin-top: 0;
+  color: var(--accent);
   font-size: 1.1rem;
 }
 
@@ -60,6 +84,7 @@ header p {
 
 .value {
   margin: 1rem 0 0;
+  color: var(--accent);
   font-size: 3rem;
   font-weight: 700;
 }
@@ -89,13 +114,14 @@ button {
   padding: 0.5rem 0.75rem;
   border: 0;
   border-radius: 6px;
-  background: #2563eb;
+  background: var(--accent, #2563eb);
   color: white;
   cursor: pointer;
   font: inherit;
 }
 
 button:disabled {
-  opacity: 0.5;
+  background: #94a3b8;
+  opacity: 0.6;
   cursor: default;
 }

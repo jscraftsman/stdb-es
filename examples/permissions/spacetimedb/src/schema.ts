@@ -2,7 +2,11 @@ import { schema, t, table } from 'spacetimedb/server';
 import { esTables, type CtxOf } from 'stdb-es/server';
 import { TABLES } from './domains/counter/constants.js';
 
-/** Private, app-owned state cache. Clients read it only through views. */
+/**
+ * Private, app-owned state cache. Clients read it only through views. Owner
+ * metadata is duplicated here so the public read model can identify which user
+ * owns each C2 row without exposing the private ownership table.
+ */
 export const counterState = table(
   {
     name: TABLES.state,
@@ -13,6 +17,8 @@ export const counterState = table(
     counterKind: t.string(),
     version: t.u32(),
     value: t.i64(),
+    owner: t.option(t.identity()),
+    ownerEmail: t.option(t.string()),
   },
 );
 
