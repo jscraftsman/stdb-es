@@ -17,8 +17,9 @@ Target: a TypeScript npm package for SpacetimeDB 2.16.x (CLI verified locally: `
 > makes React and Phaser reference UIs rather than package APIs. All phases are complete and the
 > change record is readonly historical data.
 
-> **Active scope change:** [SpacetimeDB 2.16 support](spec-changes/spacetimedb-2-16-support.md)
+> **Completed scope change:** [SpacetimeDB 2.16 support](spec-changes/spacetimedb-2-16-support.md)
 > aligns the peer floor, subscription error contract, and tiered-storage guidance with 2.16.x.
+> All phases are complete and the change record is readonly historical data.
 
 > Spacetime is the whole backend: the module *is* the application server, reducers are the write
 > path, and views are the client read path. The package therefore ships **table definitions, pure

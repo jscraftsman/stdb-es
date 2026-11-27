@@ -1,9 +1,8 @@
 # SpacetimeDB 2.16 support
 
-**Status: on-going**
+**Status: completed**
 
-> Active spec-change record. It may be updated while the work is in progress. When all phases are
-> complete, change the status to `completed` and treat it as readonly historical data.
+> Completed spec-change record. All phases are done; treat this as readonly historical data.
 
 ## Scope
 
@@ -37,7 +36,7 @@ releases without changing the framework-neutral client contract.
 - [x] Phase 3 — Tiered storage policy and app guidance: apply the library table policies above, add
       schema tests, and document recommendations for app state tables, projections/read models, event
       tables, parameterized views, and the 3.0 default change.
-- [ ] Phase 4 — Final consistency and release prep: close this record, align the design record and
+- [x] Phase 4 — Final consistency and release prep: close this record, align the design record and
       README status, run all gates, and leave release notes to the maintainer.
 
 ## Phase 1 verification
@@ -81,6 +80,24 @@ All gates passed against CLI and SDK `2.16.3`:
 - Regenerating both examples' client bindings produced no changes. No public API signatures changed,
   and no framework, DOM, or Node-only APIs were added to `.` or `./client`.
 
+## Phase 4 verification
+
+- The record is closed as `completed` and is now readonly historical data. `docs/event-sourcing-plan.md`
+  and `README.md` now describe 2.16.x support as complete while keeping React and Phaser as reference
+  UIs. `CHANGELOG.md` and npm publishing remain maintainer-owned; neither was touched.
+- Final gates passed: build, library typecheck, 143 library tests, both example typechecks, both offline
+  example suites, the fresh-app pack check, the integration-kit smoke (19 checks), and both live example
+  integration suites (5 tests each).
+- Live publish verification used a disposable in-memory CLI 2.16.3 server on a free port: clean publish
+  with `--delete-data=always`, 19 publish-smoke checks, owner and anonymous SQL spot-checks, and a normal
+  republish without `--delete-data`. The temporary server was stopped and the configured `local` server
+  was left unchanged.
+- Representative SQL returned the expected stream version, aliased event positions, `es_head`, and the
+  anonymous `counter_summary` view. Regenerating client bindings produced no changes.
+- No public API signatures changed. No framework, DOM, or Node-only APIs were added to `.` or
+  `./client`.
+
 ## Current state
 
-Phases 1–3 are complete. Phase 4 is next. No public API signatures have changed.
+All four phases are complete. The SpacetimeDB 2.16 support change is closed; release notes remain
+maintainer-owned.

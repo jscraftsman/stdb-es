@@ -9,7 +9,8 @@ and views are the client read path. `stdb-es` adds the event-sourcing half witho
 a second database, a message broker, or a separate read-model store.
 
 > **Status: 0.4.3, pre-release.** The API may change. Requires `spacetimedb >= 2.16.3 < 3`.
-> JSON event payloads are the only implemented mode; typed-enum payloads are designed but not
+> SpacetimeDB 2.16.x compatibility work is complete; React and Phaser are reference UIs, not package
+> APIs. JSON event payloads are the only implemented mode; typed-enum payloads are designed but not
 > shipped yet. TypeScript server modules only.
 
 ## Documentation
