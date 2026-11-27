@@ -21,6 +21,9 @@ Target: a TypeScript npm package for SpacetimeDB 2.16.x (CLI verified locally: `
 > aligns the peer floor, subscription error contract, and tiered-storage guidance with 2.16.x.
 > All phases are complete and the change record is readonly historical data.
 
+> **Active scope change:** [Permissions example (M16)](spec-changes/permissions-example-m16.md)
+> adds a full-stack counter example for Google OIDC authentication and public/private authorization.
+
 > Spacetime is the whole backend: the module *is* the application server, reducers are the write
 > path, and views are the client read path. The package therefore ships **table definitions, pure
 > helper functions, adapter protocols, view factories and contract tests**. The application owns
@@ -1005,7 +1008,7 @@ sets, and CI runs both consumer integration suites.
 M1 is the keystone: if dedupe/version/position ordering is wrong, everything downstream inherits it.
 M6 comes before M7: the fakes define the seams the integration kit exercises. M15 is separate from
 M9–M13: it changes the write contract for shipped pieces and does not start the paused example-set
-sequence.
+sequence. M16 is a new example scope change tracked by its own record; it does not restart M9–M13.
 
 ### 15.2 Example sets (implemented baselines; M9–M13 planned)
 
@@ -1035,6 +1038,7 @@ Neither set replaces the concept-focused sets below.
 | **M11** | **Cross-aggregate money transfer** | Cross-aggregate coordination; process state; compensating failure | `Account` streams for two owners plus one `Transfer` process stream; `TransferRequested → Debited → Credited/Reversed`; deterministic inline projection; contract test for balanced totals | Two balances, transfer form, transfer timeline, failed/compensated state | No general saga framework, no multi-domain layout, no schema migration |
 | **M12** | **Multi-domain storefront** | Multiple domains; bounded-context boundaries; domain-separated project structure | `orders`, `inventory`, `billing` folders; one schema per module but one stream type registry per domain; domain-local caches/projections/views; cross-domain IDs only, never shared event unions | Three small panels with one shared provider; each domain owns its registry, hooks, and components | No new event-sourcing primitive, no transfer saga, no schema-evolution story |
 | **M13** | **Schema evolution** | Event schema evolution; upcasters; additive event types; cache rebuild after a fold change | `Payment` stream with legacy `CardChargedV1` payload and `CardChargedV2`; `upgrade` in the registry; one additive `PaymentMethodAdded` event; doctor-driven cache repair; fixture containing old rows | Payment list showing old and new events decoded to one current union; “rebuild cache” admin button behind an app gate | No business complexity, no multi-domain setup, no eventual-consistency demo |
+| **M16** | **Permissions** (planned; active record linked above) | Authentication and authorization with Google OIDC ID tokens; public/private counter visibility | One global public counter, one public-read/private-write counter per user, and one private counter per user; module-side issuer/audience and ownership checks | One screen with Google sign-in and three counter panels | No SpacetimeAuth, no custom token-exchange server, no silent refresh, no new core API |
 
 Each example milestone exits only when all of the following are true:
 
