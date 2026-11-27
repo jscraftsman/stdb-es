@@ -7,3 +7,6 @@
  */
 export const GOOGLE_ISSUER = 'https://accounts.google.com';
 export const GOOGLE_CLIENT_ID = '407348267584-b9dmdsvdbuiohlr5l459lbib0tkvbfed.apps.googleusercontent.com';
+
+/** Audience on SpacetimeDB's own tokens for anonymous client identities. */
+export const SPACETIMEDB_TOKEN_AUDIENCE = 'spacetimedb';

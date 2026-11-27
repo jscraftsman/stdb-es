@@ -92,6 +92,9 @@ configured client id above).
 ## Try the authorization matrix
 
 - Before signing in, only the C1 card is visible. Increment, decrement, or reset it anonymously.
+  The Google ID token is stored separately from SpacetimeDB's anonymous connection token, so having
+  a connection token does not make the UI think you are signed in. That server-issued token is also
+  accepted on reconnect as an anonymous identity instead of being rejected as a non-Google JWT.
 - Click the Google button. The GIS callback stores the ID token and reloads the page, so the
   SpacetimeDB connection is rebuilt with that token.
 - Your C2 and C3 cards appear with a zero value: `clientConnected` creates one owned row of each
@@ -113,10 +116,12 @@ silent refresh.
 
 - Three authorization levels in one module: public read/write, public read with owner-only write,
   and owner-only read/write.
-- Direct Google OIDC ID tokens passed to `DbConnection.builder().withToken(...)`.
+- Direct Google OIDC ID tokens passed to `DbConnection.builder().withToken(...)`, stored separately
+  from anonymous SpacetimeDB connection tokens so C1 stays usable while logged out.
 - Module-side issuer, audience, subject, and sender-identity checks. SpacetimeDB verifies the token
   signature and derives identity from `iss` + `sub`, but it does not check `aud`.
-- `clientConnected` allows anonymous connections and rejects invalid supplied tokens.
+- `clientConnected` allows anonymous connections and saved anonymous reconnect tokens, and rejects
+  other non-Google supplied tokens.
 - Deterministic, stream-scoped stream ids so callers cannot choose or duplicate owned counters.
 - Intent-only reducers: the browser sends `by` and `commandId`, never an event or stream id.
 - A public anonymous view that lists C1 and every C2 row with server-stamped owner identity/email, a

@@ -24,6 +24,9 @@ work, not a new core package feature.
   ownership checks remain authoritative.
 - C1, C2, and C3 cards use different accents while keeping the same value, amount, and action
   elements.
+- Sign-in state is derived only from the stored Google ID token. SpacetimeDB's automatically issued
+  anonymous connection token is stored separately, so an anonymous C1 session never appears signed
+  in and sign-out really returns to an anonymous identity.
 - This record does not touch `CHANGELOG.md`; release notes stay maintainer-owned.
 
 ## Counter contract
@@ -59,8 +62,10 @@ generic append path is exposed.
   OAuth client ID. SpacetimeDB derives the identity from `iss` + `sub`; the stream id is deterministic
   from counter type plus that identity, so one user cannot create a second instance by choosing a
   different id.
-- `clientConnected` allows anonymous connections so C1 and C2 reads remain public. If a JWT is
-  present, it must be a Google ID token for the configured client ID.
+- `clientConnected` allows anonymous connections so C1 and C2 reads remain public. A saved
+  server-issued SpacetimeDB token (`aud: ["spacetimedb"]` plus matching `hex_identity`) is accepted
+  only as an anonymous reconnect token; every other supplied token must be a Google ID token for the
+  configured client ID. Owned C2/C3 rows are created only for Google identities.
 - Reducers still check the owner row with `.equals(ctx.sender)` before appending. A rejected command
   writes no event and no cache row.
 - Google ID tokens expire after about an hour. The example documents that a long-lived connection
@@ -103,11 +108,13 @@ popup mode and needs no redirect URI or client secret. The example is configured
 
 ## Decisions
 
-- The example accepts only Google ID tokens, with `https://accounts.google.com` as the expected
-  issuer and the configured OAuth client ID in `aud`. SpacetimeDB does not check `aud`, so the module
-  must.
+- The example accepts Google ID tokens, with `https://accounts.google.com` as the expected issuer and
+  the configured OAuth client ID in `aud`, for all authenticated identity. SpacetimeDB does not check
+  `aud`, so the module must.
 - Anonymous connections are allowed; otherwise the public C1 write/read case could not be shown.
-  Anonymous callers still fail C2/C3 write authorization.
+  SpacetimeDB's server-issued token is not a Google credential, so it is recognized by its
+  `spacetimedb` audience and matching `hex_identity` only for anonymous reconnects. Anonymous callers
+  still fail C2/C3 write authorization.
 - Counter ids are not trusted for owned counters. The module derives their streams from the verified
   sender identity and counter type.
 - Unit tests use `TestAuth.fromJwtPayload` to cover Google-valid and invalid claim cases offline.
@@ -170,6 +177,11 @@ popup mode and needs no redirect URI or client secret. The example is configured
   card per signed-in owner, showing the server-supplied owner email.
 - C2 cards not owned by the current identity have their increment/decrement/reset buttons disabled;
   C3 and all C2 cards are hidden while signed out. The module still rejects unauthorized writes.
+- The Google ID token and the anonymous SpacetimeDB connection token use separate localStorage keys.
+  `App` checks only the Google credential, and `main.tsx` stores the connection token only while no
+  Google credential is present. `clientConnected` recognizes that server-issued token as anonymous
+  rather than rejecting it as a non-Google JWT, so C1 subscriptions and commands work while logged
+  out, including after a reload.
 - Bindings were regenerated after the read-model change with CLI 2.16.3; private tables remain
   skipped.
 - Root scripts and `package-lock.json` include the new workspace; the example README was added to

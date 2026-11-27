@@ -3,7 +3,7 @@ import { useSpacetimeDB, useTable } from 'spacetimedb/react';
 import type { Identity } from 'spacetimedb';
 import { GoogleSignIn } from './auth/GoogleSignIn.js';
 import { decodeCredential } from './auth/google.js';
-import { readToken } from './config.js';
+import { readGoogleCredential } from './config.js';
 import { CounterPanel, type CounterRow } from './domains/counter/CounterPanel.js';
 import { COUNTER_KIND } from './domains/counter/constants.js';
 import { usePermissionsCommands } from './domains/counter/usePermissionsCommands.js';
@@ -19,9 +19,12 @@ export default function App() {
   const [privateRows, privateReady] = useTable(tables.privateSummary);
   const commands = usePermissionsCommands();
 
-  const token = readToken();
-  const signedIn = token !== undefined;
-  const profile = useMemo(() => decodeCredential(token ?? ''), [token]);
+  const googleCredential = readGoogleCredential();
+  const signedIn = googleCredential !== undefined;
+  const profile = useMemo(
+    () => decodeCredential(googleCredential ?? ''),
+    [googleCredential],
+  );
 
   const globalRow = publicRows.find((row) => row.counterKind === COUNTER_KIND.global);
   const publicOwnedRows: (CounterRow | undefined)[] = publicRows.filter(

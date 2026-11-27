@@ -7,7 +7,7 @@ import {
 } from 'stdb-es/server';
 import { spacetimedb, type Context } from '../../schema.js';
 import { evolve, replayValue } from './aggregate.js';
-import { assertValidGoogleTokenIfPresent, googleEmail } from './auth.js';
+import { assertValidConnectionToken, googleEmail, hasGoogleIdentity } from './auth.js';
 import {
   COUNTER_KIND,
   EVENT_TYPES,
@@ -213,13 +213,15 @@ export const resetPrivateMine = spacetimedb.reducer(plainCommand, (ctx, command)
 });
 
 /**
- * Anonymous connections are allowed for C1 and C2 reads. If a client supplies
- * a token, it must be a Google ID token for this application.
+ * Anonymous connections are allowed for C1 and C2 reads, including when the
+ * client reuses its saved SpacetimeDB token. Other supplied tokens must be
+ * Google ID tokens for this application, and only Google identities get owned
+ * C2/C3 rows.
  */
 export const onConnect = spacetimedb.clientConnected((ctx) => {
-  assertValidGoogleTokenIfPresent(ctx);
+  assertValidConnectionToken(ctx);
   ensureGlobalState(ctx);
-  if (ctx.senderAuth.hasJWT) {
+  if (hasGoogleIdentity(ctx)) {
     ensureOwnedState(ctx, COUNTER_KIND.publicOwned);
     ensureOwnedState(ctx, COUNTER_KIND.privateOwned);
   }

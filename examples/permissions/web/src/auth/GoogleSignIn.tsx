@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { clearToken, GOOGLE_CLIENT_ID, writeToken } from '../config.js';
+import { clearAuthTokens, GOOGLE_CLIENT_ID, writeGoogleCredential } from '../config.js';
 import { decodeCredential, type GoogleProfile } from './google.js';
 
 type Props = {
@@ -26,7 +26,7 @@ export function GoogleSignIn({ signedIn, profile }: Props) {
       use_one_tap: false,
       callback: (response) => {
         // A reload lets the provider rebuild the connection with this token.
-        writeToken(response.credential);
+        writeGoogleCredential(response.credential);
         window.location.reload();
       },
     });
@@ -40,7 +40,7 @@ export function GoogleSignIn({ signedIn, profile }: Props) {
 
   function signOut() {
     window.google?.accounts?.id?.disableAutoSelect?.();
-    clearToken();
+    clearAuthTokens();
     window.location.reload();
   }
 
