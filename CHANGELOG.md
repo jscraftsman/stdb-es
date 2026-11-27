@@ -1,3 +1,22 @@
+## 0.4.4 (2026-11-27)
+
+### Fix
+
+- **M16**: Phase 2 - Fixed public counter not allowing anonymous users to read and write without requiring user sign-in
+
+### Refactor
+
+- **M16**: Phase 5 - Final consistency check in docs and CI
+- **M16**: Phase 4 - Added integration tests for "permissions" example
+- **M16**: Phase 3 - Added unit tests for "permissions" example
+- **M16**: Phase 2 - Change requirements for frontend setup. Allow multple public read only instances. Applied counter UI themes
+- **M16**: Phase 2 - Setup frontend for "permissions" example
+- **M16**: Phase 1 - Setup backend module
+- **M16**: Phase 0 - Setup new example called "permissions"
+- **SpacetimeUpgrade**: STDB v2.16.3, Phase 3 & 4 - Tiered storage policy and final consistency checks
+- **SpacetimeUpgrade**: STDB v2.16.3, Phase 2 - Fix subscription error contract and align docs and tests with the SDK's callback
+- **SpacetimeUpgrade**: STDB v2.16.3, Phase 1 - Docs and source code comments
+
 ## 0.4.3 (2026-11-24)
 
 ### Refactor
