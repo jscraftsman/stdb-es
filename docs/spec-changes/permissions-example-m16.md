@@ -107,7 +107,7 @@ popup mode and needs no redirect URI or client secret.
 
 - [x] Phase 0 — Planning: create this M16 record, link it from the design record, and agree on the
       counter contract, Google setup flow, and phase boundaries.
-- [ ] Phase 1 — Backend module: add `examples/permissions/spacetimedb/` with the schema, auth
+- [x] Phase 1 — Backend module: add `examples/permissions/spacetimedb/` with the schema, auth
       helpers, command reducers, public/private views, and module configuration. No tests yet.
 - [ ] Phase 2 — Full-stack wiring: add the React client, Google sign-in flow, generated bindings,
       root npm scripts/workspaces/lockfile, and the example README with the Google Console guide.
@@ -126,6 +126,21 @@ popup mode and needs no redirect URI or client secret.
 - Google authentication is designed around direct OIDC ID tokens, with module-side issuer and
   audience checks; no SpacetimeAuth dependency is introduced.
 
+## Phase 1 verification
+
+- `npx tsc -p examples/permissions/spacetimedb/tsconfig.json --noEmit` passes.
+- `spacetime build -p examples/permissions/spacetimedb` succeeds with CLI 2.16.3.
+- The module exports nine intent-only command reducers (three per counter), a `clientConnected`
+  hook, two state views, and two event views. The browser never supplies a stream id, event id,
+  event payload, or version.
+- C1 uses the fixed `global-all` stream. C2 and C3 derive their stream ids from the verified
+  sender's identity, and all owned writes validate Google issuer, audience, subject, and sender
+  identity.
+- `counter_public_summary` excludes C3 rows; `counter_private_summary` and `counter_private_events`
+  filter by the caller's identity. `counter_public_events` refuses private streams through the
+  stream type stored in the event catalogue.
+- No test files were added in this phase, and no public API signatures changed.
+
 ## Current state
 
-Phase 0 is complete. Phase 1 is next. No public API signatures have changed.
+Phase 1 is complete. Phase 2 is next. No public API signatures have changed.
