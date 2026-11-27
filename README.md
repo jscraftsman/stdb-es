@@ -8,7 +8,7 @@ SpacetimeDB is the whole backend. The module is the application server, reducers
 and views are the client read path. `stdb-es` adds the event-sourcing half without asking you to run
 a second database, a message broker, or a separate read-model store.
 
-> **Status: 0.4.3, pre-release.** The API may change. Requires `spacetimedb >= 2.15 < 3`.
+> **Status: 0.4.3, pre-release.** The API may change. Requires `spacetimedb >= 2.16.3 < 3`.
 > JSON event payloads are the only implemented mode; typed-enum payloads are designed but not
 > shipped yet. TypeScript server modules only.
 
@@ -722,10 +722,10 @@ Covered invariants: append/read ordering, gapless positions, optimistic concurre
 replay, repository/cache agreement, structural integrity, same-version drift detection and repair,
 time travel, projection rebuild parity, and view output. Each case uses a fresh harness.
 
-**Harness workaround.** `spacetimedb@2.15.0`'s module test harness bundles a second `Range` class, so
-composite range scans silently return no rows and single-column ranges throw. The real host is not
-affected. Wrap every reducer and view context with `withIndexRanges(ctx)` (exported from
-`stdb-es/testing`) until the harness is fixed; delete the wrapper when it is.
+**Harness workaround.** The module test harness bundles a second `Range` class, so composite range
+scans silently return no rows and single-column ranges throw. The real host is not affected. Wrap
+every reducer and view context with `withIndexRanges(ctx)` (exported from `stdb-es/testing`) until the
+harness is fixed; delete the wrapper when it is.
 
 ## Guarantees
 

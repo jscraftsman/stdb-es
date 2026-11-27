@@ -3,7 +3,7 @@
 Reference: [BuildYourOwnEventStore](https://github.com/oskardudycz/EventSourcing.NetCore/tree/main/Workshops/BuildYourOwnEventStore)
 (Postgres + Dapper + a PL/pgSQL `append_event` function).
 
-Target: a TypeScript npm package for SpacetimeDB 2.15.x (CLI verified locally: `spacetimedb-cli 2.15.0`).
+Target: a TypeScript npm package for SpacetimeDB 2.16.x (CLI verified locally: `spacetimedb-cli 2.16.3`).
 
 > Implementation note: this plan was written under the working name `spacetime-event-store`; the
 > package shipped as **`stdb-es`**, with entry points `.`, `./server`, `./client`, `./testing`, and
@@ -16,6 +16,9 @@ Target: a TypeScript npm package for SpacetimeDB 2.15.x (CLI verified locally: `
 > **Completed scope change:** [frontend-framework agnostic client contract](spec-changes/frontend-framework-agnostic-contract.md)
 > makes React and Phaser reference UIs rather than package APIs. All phases are complete and the
 > change record is readonly historical data.
+
+> **Active scope change:** [SpacetimeDB 2.16 support](spec-changes/spacetimedb-2-16-support.md)
+> aligns the peer floor, subscription error contract, and tiered-storage guidance with 2.16.x.
 
 > Spacetime is the whole backend: the module *is* the application server, reducers are the write
 > path, and views are the client read path. The package therefore ships **table definitions, pure
@@ -92,7 +95,7 @@ change the design, so they are recorded here rather than quietly edited.
 
 ## 2. What changes versus the workshop
 
-| Workshop (Postgres / .NET) | This package (Spacetime 2.15 / TS) |
+| Workshop (Postgres / .NET) | This package (Spacetime 2.16 / TS) |
 | --- | --- |
 | `append_event(...)` SQL function | `appendToStream()` helper called from an app-owned reducer |
 | `SELECT ... FOR UPDATE` | Not needed: transactions are serializable and serialized per database |
@@ -238,7 +241,7 @@ stdb-es/
     "./testing": "./dist/testing/index.js",
     "./testing/integration": "./dist/testing/integration/index.js"
   },
-  "peerDependencies": { "spacetimedb": ">=2.15.0 <3", "vitest": ">=3 <4" },
+  "peerDependencies": { "spacetimedb": ">=2.16.3 <3", "vitest": ">=3 <4" },
   "peerDependenciesMeta": { "vitest": { "optional": true } }
 }
 ```
@@ -966,7 +969,7 @@ recovery, and queries the anonymous view. It runs against `spacetime start --in-
 ### 14.5 CI (R5)
 
 `.github/workflows/ci.yml` runs on push, pull request, and manual dispatch. It pins Node `24.22.3`
-and SpacetimeDB CLI `2.15.0`, then gates on build, library and example typechecks, offline
+and SpacetimeDB CLI `2.16.3`, then gates on build, library and example typechecks, offline
 `vitest run`, a packed fresh-workspace install (`npm run check:pack`), the live maintainer smoke, and
 the consumer integration smoke (`npm run smoke:integration`) on disposable in-memory local servers.
 The pack check verifies the published `exports` map and shipped declarations from module-like and

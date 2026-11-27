@@ -38,7 +38,7 @@ one generated client, and one small reference UI screen.
 
 ```bash
 node --version          # 20 or newer
-spacetime --version     # 2.15.x
+spacetime --version     # 2.16.x
 ```
 
 Start a local SpacetimeDB server separately, and make sure the `local` nickname exists:
@@ -97,7 +97,7 @@ want a scratch reset.
     "stdb-es": "latest"
   },
   "devDependencies": {
-    "spacetimedb": "2.15.0",
+    "spacetimedb": "2.16.3",
     "typescript": "^5.7.0"
   }
 }
@@ -119,7 +119,7 @@ want a scratch reset.
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "spacetimedb": "2.15.0",
+    "spacetimedb": "2.16.3",
     "stdb-es": "latest"
   },
   "devDependencies": {
@@ -135,8 +135,8 @@ want a scratch reset.
 `latest` keeps this walkthrough focused on the published npm package. Equivalently, run
 `npm install stdb-es@latest` inside `spacetimedb/` and again inside `web/`; the root `npm install`
 below performs both through npm workspaces. Pin the exact version npm resolves in an application you
-intend to reproduce. `stdb-es` declares `spacetimedb >=2.15 <3` as a peer; both subprojects install
-`2.15.0` explicitly because generated bindings are version-specific.
+intend to reproduce. `stdb-es` declares `spacetimedb >=2.16.3 <3` as a peer; both subprojects install
+`2.16.3` explicitly because generated bindings are version-specific.
 
 Add the config files:
 
@@ -1755,8 +1755,8 @@ codes.
 `stdb-es/testing` ships `createModuleTest`, `createFakeCommand`, `ids`, `expectAppendError`,
 `withIndexRanges`, `wireEvent`, `wireEvents`, `versions`, and the contract suite. Call the app's real
 command reducers and assert the facts the module derived from the intent. `createModuleTest` wraps
-every context with `withIndexRanges`, working around a `Range` class mismatch in the
-`spacetimedb@2.15.0` test harness; the real host is unaffected.
+every context with `withIndexRanges`, working around a `Range` class mismatch in the module test
+harness; the real host is unaffected.
 
 ```ts
 // spacetimedb/src/domains/counter/reducers.test.ts

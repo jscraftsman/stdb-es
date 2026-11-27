@@ -108,7 +108,7 @@ try {
     private: true,
     version: '0.0.0',
     type: 'module',
-    dependencies: { 'stdb-es': dependency, spacetimedb: '2.15.0' },
+    dependencies: { 'stdb-es': dependency, spacetimedb: '2.16.3' },
   });
   writeJson('module/tsconfig.json', sharedTsconfig);
   write(
@@ -132,7 +132,7 @@ try {
     private: true,
     version: '0.0.0',
     type: 'module',
-    dependencies: { 'stdb-es': dependency, spacetimedb: '2.15.0' },
+    dependencies: { 'stdb-es': dependency, spacetimedb: '2.16.3' },
   });
   writeJson('web/tsconfig.json', sharedTsconfig);
   write(
@@ -157,7 +157,7 @@ try {
     private: true,
     version: '0.0.0',
     type: 'module',
-    dependencies: { 'stdb-es': dependency, spacetimedb: '2.15.0' },
+    dependencies: { 'stdb-es': dependency, spacetimedb: '2.16.3' },
   });
   writeJson('node/tsconfig.json', sharedTsconfig);
   write(

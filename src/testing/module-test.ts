@@ -17,7 +17,7 @@ export type CreateModuleTestOptions = HarnessOptions & {
   auth?: TestAuth;
 };
 
-/** Offline module-test wrapper with the 2.15 harness range shim applied. */
+/** Offline module-test wrapper with the module harness range shim applied. */
 export type ModuleTest<S extends AnySchema> = {
   /** The underlying harness, for cases the convenience methods do not cover. */
   readonly harness: HarnessFor<S>;

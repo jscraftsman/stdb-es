@@ -4,7 +4,7 @@ This is the complete reference for the **shipped** `stdb-es` consumer API. For t
 see the [Package Usage Guide](usage-guide.md). Planned APIs are listed at the end and are not
 available yet.
 
-> Requires `spacetimedb >= 2.15 < 3`. JSON event payloads are the only implemented payload mode.
+> Requires `spacetimedb >= 2.16.3 < 3`. JSON event payloads are the only implemented payload mode.
 > `stdb-es/server` is for TypeScript server modules only. `stdb-es/testing/integration` is Node/CLI-only.
 > `.` and `./client` are framework-neutral: they contain no React, Phaser, DOM, or Node-only APIs.
 > `vitest >= 3 < 4` is a required peer dependency; `stdb-es/testing` is built on Vitest.
@@ -414,7 +414,7 @@ task-oriented examples.
 | `FakeCommandOptions`, `FakeCommand<TCommand>` | Command-fake types | — | Compile-time only |
 
 Every context passed to `tx`, `call`, `view`, or `anonymousView` is wrapped with `withIndexRanges`, so
-the 2.15 harness behaves like the real host. `tx` commits when the body returns and rolls back when it
+the module test harness behaves like the real host. `tx` commits when the body returns and rolls back when it
 throws. `call` looks up the reducer by export name. `view` and `anonymousView` call the supplied view
 function directly with the matching harness context type.
 
@@ -430,12 +430,12 @@ No append fake is shipped: clients have no append binding. For server-side store
 
 | Symbol | Purpose | Inputs | Output |
 | --- | --- | --- | --- |
-| `withIndexRanges(ctx)` | Makes SpacetimeDB 2.15 harness range scans behave like the real host | Reducer/view context | The same context type with shimmed `db.esEvent` range accessors. Safe no-op after re-wrapping. |
+| `withIndexRanges(ctx)` | Makes module test harness range scans behave like the real host | Reducer/view context | The same context type with shimmed `db.esEvent` range accessors. Safe no-op after re-wrapping. |
 | `wireEvent(eventId, eventType, payload)` | Builds one wire event | `eventId`, `eventType`, JSON-serializable payload | `EncodedEvent` with `data: JSON.stringify(payload)` |
 | `wireEvents(prefix, pairs)` | Builds a deterministic batch | `prefix: string`, pairs of `[eventType, payload]` | `EncodedEvent[]` with ids `${prefix}-1`, `${prefix}-2`, … |
 | `versions(rows)` | Compact version assertions | Rows with a `version` field | `number[]` |
 
-`withIndexRanges` works around a duplicate `Range` class inside the 2.15 module test harness. The
+`withIndexRanges` works around a duplicate `Range` class inside the module test harness. The
 production host is unaffected; do not add the wrapper to module code.
 
 ### 4.3 Contract suite
@@ -469,7 +469,7 @@ resubmitting identical ids is a valid replay even when `expectedVersion` is stal
 
 ## 5. `stdb-es/testing/integration` — live integration tooling (Node-only)
 
-This entry owns a real server lifecycle and needs the SpacetimeDB CLI `2.15.0` on `PATH`. It has no
+This entry owns a real server lifecycle and needs the SpacetimeDB CLI `2.16.3` on `PATH`. It has no
 `vitest` dependency. In owned local mode the spawned server uses a unique temporary `--data-dir`, so
 it does not contend with another server's `spacetime.pid` lock. See the
 [integration testing guide](integration%20testing.md) for task-oriented examples.

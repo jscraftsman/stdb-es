@@ -4,8 +4,8 @@
 reach a client, so the only way to read them is as the database owner, with `spacetime sql`.
 
 This page is the operator's toolbox: inspect a stream, time-travel, compare a state cache with the
-log, and recover safely. Every query here was run against a live `spacetimedb` 2.15.0 database.
-Nothing here is a write path.
+log, and recover safely. Representative queries here were rechecked against a live `spacetimedb`
+2.16.3 database. Nothing here is a write path.
 
 > **Rule of thumb: read with SQL, write with reducers.** Hand-editing `es_event`, `es_stream`, or
 > `es_head` bypasses dedupe, the version guard, the head counter, and every projection. There is no
@@ -30,7 +30,7 @@ command reducer takes `counterId`, `by`, then `commandId` in that order.
 
 ## What server-side SQL supports
 
-Verified on 2.15.0. SpacetimeDB's SQL is a subset of Postgres; do not assume the rest.
+Last checked on 2.16.3. SpacetimeDB's SQL is a subset of Postgres; do not assume the rest.
 
 | Works | Does not work |
 | --- | --- |

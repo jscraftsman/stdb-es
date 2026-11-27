@@ -18,7 +18,7 @@ npm install --save-dev stdb-es
 The kit requires:
 
 - Node 20 or newer.
-- The SpacetimeDB CLI `2.15.0` on `PATH` (`spacetime --version`).
+- The SpacetimeDB CLI `2.16.3` on `PATH` (`spacetime --version`).
 - Your module source directory (default: `spacetimedb`) publishable with `spacetime publish`.
 
 The integration kit itself does not import Vitest and works with Vitest, Node's built-in test runner,
@@ -236,7 +236,7 @@ attached database, pass `keepDatabase: false` explicitly.
 
 | Symptom | Fix |
 | --- | --- |
-| `spacetime publish failed` | Install CLI `2.15.0`, check `modulePath`, and confirm the module builds outside the kit. |
+| `spacetime publish failed` | Install CLI `2.16.3`, check `modulePath`, confirm the module builds outside the kit, and check that you own the database name when republishing. |
 | Readiness timeout in local mode | Another process owns the chosen `port`, or `spacetime start` cannot launch its standalone binary. Omit `port` to get a free one. |
 | `Cannot read properties of undefined` in a subscription test | The table/view name in `client.rows(...)` must match the key emitted by the SQL subscription. |
 | Subscription wait times out | Check the exact query, whether the view is public, and whether the expected event was appended after the subscription started. Increase `timeoutMs`. |

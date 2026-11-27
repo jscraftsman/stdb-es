@@ -370,7 +370,7 @@ No `spacetime start` is needed. These tests use the in-memory module harness onl
 
 | Symptom | Fix |
 | --- | --- |
-| Composite range scans return no rows or throw `Cannot convert ... to a BigInt` | Use `createModuleTest`, or wrap the context with `withIndexRanges(ctx)` in your own helper. This is a `spacetimedb@2.15.0` harness bug, not a host bug. |
+| Composite range scans return no rows or throw `Cannot convert ... to a BigInt` | Use `createModuleTest`, or wrap the context with `withIndexRanges(ctx)` in your own helper. This is a module test harness bug, not a host bug. |
 | Reducer tests fail with a missing datastore error | Add `spacetimedbModuleTestPlugin()` to `vitest.config.ts`. |
 | A stale-version test returns `replayed` | You reused committed event ids in the server-side fixture. Generate fresh ids with a new prefix. |
 | A command replay appears to do nothing | That is correct when `commandId` is repeated. Use a fresh command id for a new intent. |

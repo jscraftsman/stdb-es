@@ -1,7 +1,7 @@
 import { Range } from 'spacetimedb/server';
 
 /**
- * Test-harness workaround for `spacetimedb@2.15.0`.
+ * Test-harness workaround for the duplicated `Range` class.
  *
  * The module test harness bundles its own copy of the `Range` class, so the
  * `range instanceof Range` check inside `makeTableView` fails for ranges created

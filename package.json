@@ -87,7 +87,7 @@
     "prepublishOnly": "npm run clean && npm run build && npm run typecheck && npm test && npm run check:pack"
   },
   "peerDependencies": {
-    "spacetimedb": ">=2.15.0 <3",
+    "spacetimedb": ">=2.16.3 <3",
     "vitest": ">=3 <4"
   },
   "publishConfig": {
@@ -96,7 +96,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "spacetimedb": "2.15.0",
+    "spacetimedb": "2.16.3",
     "typescript": "^5.7.0",
     "vitest": "^3.2.7"
   }
